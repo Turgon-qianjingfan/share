@@ -84,6 +84,8 @@ def main():
             print(f"{k}={v}")
         exposure = ((eq["equity"] - eq["cash"]) / eq["equity"]).mean() if not eq.empty else 0.0
         print(f"avg_equity_exposure={exposure:.6f}")
+        if not eq.empty:
+            print("regime_counts=", eq["market_regime"].value_counts().to_dict())
         print(f"trade_stats={stats}")
 
     close = data.pivot(index="date", columns="symbol", values="close").sort_index()
