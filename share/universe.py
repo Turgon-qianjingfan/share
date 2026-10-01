@@ -103,27 +103,27 @@ def profile_snapshot(profiles: pd.DataFrame, signal_date: pd.Timestamp) -> pd.Da
 
 def attach_profiles(day: pd.DataFrame, profiles: pd.DataFrame | None, signal_date: pd.Timestamp) -> pd.DataFrame:
     out = day.copy()
-    if profiles is None or profiles.empty:
-        out["industry"] = out.get("industry", "")
-        out["tier"] = "unknown"
-        out["leader_score"] = 0.0
-        out["size_score"] = 0.0
-        return out
+    out["industry"] = out.get("industry", "")
+    out["tier"] = "unknown"
+    out["leader_score"] = 0.0
+    out["size_score"] = 0.0
 
-    snap = profile_snapshot(profiles, signal_date)
-    keep = ["symbol", "industry", "tier", "leader_score", "size_score"]
-    snap = snap[keep].copy()
-    out = out.merge(snap, on="symbol", how="left", suffixes=("", "_profile"))
-    if "industry_profile" in out.columns:
-        out["industry"] = out["industry_profile"].where(
-            out["industry_profile"].notna() & (out["industry_profile"] != ""), out.get("industry", "")
-        )
-        out = out.drop(columns=["industry_profile"])
+    if profiles is not None and not profiles.empty:
+        snap = profile_snapshot(profiles, signal_date)
+        keep = ["symbol", "industry", "tier", "leader_score", "size_score"]
+        snap = snap[keep].copy()
+        out = out.merge(snap, on="symbol", how="left", suffixes=("", "_profile"))
+        if "industry_profile" in out.columns:
+            out["industry"] = out["industry_profile"].where(
+                out["industry_profile"].notna() & (out["industry_profile"] != ""), out["industry"]
+            )
+            out = out.drop(columns=["industry_profile"])
+
+        out["tier"] = out["tier"].fillna("unknown").astype(str).str.lower()
+        out["leader_score"] = pd.to_numeric(out["leader_score"], errors="coerce").fillna(0.0).clip(0, 1)
+        out["size_score"] = pd.to_numeric(out["size_score"], errors="coerce").fillna(0.0).clip(0, 1)
 
     inferred = infer_profile_scores(out)
-    out["tier"] = out["tier"].fillna("unknown").astype(str).str.lower()
-    out["leader_score"] = pd.to_numeric(out["leader_score"], errors="coerce").fillna(0.0).clip(0, 1)
-    out["size_score"] = pd.to_numeric(out["size_score"], errors="coerce").fillna(0.0).clip(0, 1)
 
     # A point-in-time market-cap field can supply a fallback when no explicit
     # profile score is present.
