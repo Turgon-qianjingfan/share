@@ -6,38 +6,48 @@ capital_preservation:
   min_cash_weight: 0.60
   warning_drawdown_limit: 0.05
   hard_drawdown_limit: 0.08
-  cooldown_days: 10
   principal_guard_weight: 0.20
+  cooldown_days: 10
 
 max_single_weight: 0.08
 target_positions: 5
 
-lookback_fast: 20
-lookback_slow: 60
-atr_window: 20
-rsi_window: 14
-min_history: 80
-
-entry:
-  rsi_low: 45
-  rsi_high: 72
-  max_annualized_vol: 0.60
-  min_20d_return: 0.00
-
-holding:
+technical:
+  lookback_fast: 20
+  lookback_slow: 60
+  atr_window: 20
+  rsi_window: 14
+  min_adx: 15
+  max_entry_annualized_vol: 0.65
+  min_20d_return: -0.02
+  hold_ma_buffer: 0.985
   min_holding_days: 10
   trend_break_confirm_days: 3
-  trail_atr_multiple: 3.0
-  hold_ma_buffer: 0.985
+  trail_atr_multiple: 3.2
+  rebalance_threshold: 0.025
+
+weights:
+  technical: 0.65
+  company_event: 0.20
+  industry_event: 0.15
+
+events:
+  company_half_life_days: 10
+  industry_half_life_days: 15
+  max_lookback_days: 30
+  severe_negative_score: -0.75
+
+regime:
+  risk_on_weight: 0.40
+  neutral_weight: 0.30
+  defensive_weight: 0.15
+  crisis_weight: 0.00
 
 execution:
   commission_rate: 0.0003
   stamp_duty_rate: 0.0005
   slippage_rate: 0.0005
   lot_size: 100
-
-trading:
-  rebalance_threshold: 0.025
 
 research:
   history_start: "2021-10-01"
