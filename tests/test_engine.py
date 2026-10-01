@@ -93,3 +93,50 @@ def test_empty_candidate_rank_is_safe():
     out=rank_candidates(pd.DataFrame(columns=["symbol"]), {}, StrategyConfig())
     assert out.empty
     assert "composite_score" in out.columns
+
+def test_limit_to_latest_1000_trading_days_per_symbol():
+    from share.data import limit_to_trading_days
+    dates = pd.bdate_range("2020-01-01", periods=1100)
+    rows = []
+    for symbol in ["A", "B"]:
+        for i, d in enumerate(dates):
+            rows.append({"date": d, "symbol": symbol, "open": 10+i*0.01,
+                         "high": 10+i*0.01, "low": 10+i*0.01,
+                         "close": 10+i*0.01, "volume": 1000})
+    out = limit_to_trading_days(pd.DataFrame(rows), 1000)
+    assert out.groupby("symbol").size().to_dict() == {"A": 1000, "B": 1000}
+    assert out["date"].min() > dates[0]
+
+
+def test_selection_prioritises_core_and_diversifies_industries():
+    from share.strategy import select_entries, StrategyConfig
+
+    ranked = pd.DataFrame([
+        {"symbol":"L1","industry":"银行","tier":"leader","leader_score":1,"size_score":1,
+         "technical_score":0.70,"company_score":0.2,"industry_score":0.1,"composite_score":0.70},
+        {"symbol":"L2","industry":"银行","tier":"leader","leader_score":1,"size_score":1,
+         "technical_score":0.69,"company_score":0.2,"industry_score":0.1,"composite_score":0.69},
+        {"symbol":"L3","industry":"医药","tier":"large","leader_score":0.8,"size_score":0.9,
+         "technical_score":0.66,"company_score":0.1,"industry_score":0.1,"composite_score":0.66},
+        {"symbol":"L4","industry":"电子","tier":"large","leader_score":0.8,"size_score":0.8,
+         "technical_score":0.65,"company_score":0.1,"industry_score":0.1,"composite_score":0.65},
+        {"symbol":"S1","industry":"新能源","tier":"small","leader_score":0,"size_score":0.1,
+         "technical_score":0.90,"company_score":0.2,"industry_score":0.2,"composite_score":0.90},
+    ])
+    cfg=StrategyConfig(target_positions=4, min_distinct_industries=3,
+                       max_industry_positions=2, max_tactical_positions=1)
+    out=select_entries(ranked,cfg)
+    assert len(out)==4
+    assert out["industry"].nunique() >= 3
+    assert out["tier"].eq("small").sum() <= 1
+    assert out.iloc[0]["tier"] != "small"
+
+
+def test_tactical_entry_requires_short_term_momentum():
+    from share.strategy import is_tactical_entry_eligible, StrategyConfig
+    base={"close":110,"ma_fast":105,"ma_slow":100,"atr":2,"rsi":60,
+          "ret_5":0.01,"ret_20":0.05,"ret_60":0.10,"vol_20":0.20,"adx":25,
+          "volume_ratio":1.30,"relative_strength_20":0.05,"breakout_20":False}
+    assert is_tactical_entry_eligible(pd.Series(base), StrategyConfig()) is False
+    base["ret_5"]=0.04
+    assert is_tactical_entry_eligible(pd.Series(base), StrategyConfig()) is True
