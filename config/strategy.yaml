@@ -1,0 +1,15 @@
+initial_cash: 1000000
+max_single_weight: 0.10
+max_equity_weight: 0.60
+min_cash_weight: 0.40
+max_risk_per_trade: 0.005
+target_positions: 6
+lookback_fast: 20
+lookback_slow: 60
+atr_window: 20
+rsi_window: 14
+min_history: 80
+commission_rate: 0.0003
+stamp_duty_rate: 0.0005
+slippage_rate: 0.0005
+lot_size: 100
