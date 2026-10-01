@@ -21,9 +21,9 @@ class Backtester:
         execution_cfg: ExecutionConfig | None = None,
         regime_cfg: RegimeConfig | None = None,
         event_cfg: EventConfig | None = None,
-        warning_drawdown_limit: float = 0.05,
+        warning_drawdown_limit: float = 0.06,
         hard_drawdown_limit: float = 0.08,
-        principal_guard_weight: float = 0.20,
+        principal_guard_weight: float = 0.25,
         cooldown_days: int = 10,
     ):
         self.strategy_cfg = strategy_cfg or StrategyConfig()
@@ -160,7 +160,7 @@ class Backtester:
                         )
                 cooldown = self.cooldown_days
 
-            risk_budget = min(regime_weight, 0.10) if drawdown <= -self.warning_drawdown_limit else regime_weight
+            risk_budget = min(regime_weight, 0.20) if drawdown <= -self.warning_drawdown_limit else regime_weight
             if equity < self.initial_cash:
                 risk_budget = min(risk_budget, self.principal_guard_weight)
             if cooldown > 0 or stable_regime == "crisis":
