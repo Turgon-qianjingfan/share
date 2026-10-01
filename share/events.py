@@ -88,7 +88,7 @@ def event_score_for_day(
         * e["type_weight"]
     )
 
-    own = e[e["symbol"] == symbol].copy()
+    own = e[(e["symbol"] == symbol) & (e["event_type"] != "industry")].copy()
     company_score = float(
         (own["weight"] * own["age_days"].map(lambda d: _decay(d, cfg.company_half_life_days))).sum()
     ) if not own.empty else 0.0
