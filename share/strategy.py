@@ -202,7 +202,10 @@ def rank_candidates(
             "composite_score", "profile_priority", "selection_score",
         ])
 
-    return enrich_ranked_candidates(pd.DataFrame(rows))
+    return enrich_ranked_candidates(
+        pd.DataFrame(rows),
+        priority_weight=cfg.profile_priority_weight,
+    )
 
 
 def select_entries(ranked: pd.DataFrame, cfg: StrategyConfig) -> pd.DataFrame:
