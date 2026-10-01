@@ -2,21 +2,22 @@ initial_cash: 200000
 
 capital_preservation:
   enabled: true
-  max_equity_weight: 0.40
+  max_equity_weight: 0.50
   min_cash_weight: 0.60
-  warning_drawdown_limit: 0.06
-  hard_drawdown_limit: 0.08
+  warning_drawdown_limit: 0.08
+  hard_drawdown_limit: 0.10
   principal_guard_weight: 0.25
   cooldown_days: 10
 
 universe:
   lookback_trading_days: 1000
-  target_positions: 5
+  target_positions: 6
   max_single_weight: 0.10
   max_tactical_weight: 0.04
   max_industry_positions: 2
-  min_distinct_industries: 3
+  min_distinct_industries: 4
   max_tactical_positions: 1
+  min_defensive_positions: 2
   tactical_allocation_ratio: 0.10
   risk_budget_tolerance: 0.03
   profile_priority_weight: 0.20
@@ -42,14 +43,18 @@ technical:
   min_holding_days: 10
   trend_break_confirm_days: 3
   trail_atr_multiple: 3.0
-  minimum_entry_score: 0.60
+  minimum_entry_score: 0.57
   rebalance_threshold: 0.025
 
 tactical:
-  minimum_entry_score: 0.74
-  min_5d_return: 0.04
-  min_volume_ratio: 1.40
-  min_relative_strength: 0.02
+  minimum_entry_score: 0.70
+  min_5d_return: 0.06
+  min_volume_ratio: 1.30
+  min_relative_strength: 0.03
+  min_money_flow_proxy: 0.10
+  min_company_score: 0.05
+  min_industry_score: -0.05
+  min_limit_up_streak: 2
   min_holding_days: 3
   trail_atr_multiple: 2.5
   reentry_cooldown_days: 10
