@@ -156,3 +156,9 @@ def test_market_cap_can_drive_point_in_time_size_and_leadership_scores():
     assert a["size_score"] > b["size_score"] > c["size_score"]
     assert a["leader_score"] > b["leader_score"]
     assert c["leader_score"] == 0
+
+def test_moderate_aggression_allows_higher_core_exposure():
+    from share.strategy import target_weights
+    cfg = StrategyConfig(max_single_weight=0.10, max_equity_weight=0.50)
+    out = target_weights(["A","B","C","D","E"], 0.50, cfg.max_single_weight)
+    assert abs(sum(out.values()) - 0.50) < 1e-9
