@@ -11,8 +11,6 @@ from .events import EventConfig, event_score_for_day, validate_events
 from .regime import RegimeConfig, market_regime
 from .data import limit_to_trading_days
 from .universe import attach_profiles, is_tactical_tier
-from .data import limit_to_trading_days
-from .universe import attach_profiles, is_tactical_tier
 
 
 class Backtester:
@@ -62,10 +60,6 @@ class Backtester:
         if benchmark is not None:
             benchmark = limit_to_trading_days(benchmark, self.strategy_cfg.lookback_trading_days)
 
-        data = limit_to_trading_days(data, self.strategy_cfg.lookback_trading_days)
-        if benchmark is not None:
-            benchmark = limit_to_trading_days(benchmark, self.strategy_cfg.lookback_trading_days)
-
         data = add_indicators(
             data,
             fast=self.strategy_cfg.lookback_fast,
@@ -91,12 +85,6 @@ class Backtester:
         data = add_relative_strength(data, benchmark)
         events = validate_events(events) if events is not None and not events.empty else pd.DataFrame()
         industry_map = industry_map or {}
-        if stock_profiles is not None and not stock_profiles.empty:
-            profiled = attach_profiles(data, stock_profiles, pd.Timestamp(data["date"].max()))
-            profile_industry_map = dict(zip(profiled["symbol"], profiled["industry"]))
-            for symbol, industry in profile_industry_map.items():
-                if industry:
-                    industry_map.setdefault(symbol, industry)
         if stock_profiles is not None and not stock_profiles.empty:
             profiled = attach_profiles(data, stock_profiles, pd.Timestamp(data["date"].max()))
             profile_industry_map = dict(zip(profiled["symbol"], profiled["industry"]))
@@ -201,8 +189,9 @@ class Backtester:
             )
             entries_df = select_entries(ranked, self.strategy_cfg)
             entries = entries_df["symbol"].tolist() if not entries_df.empty else []
-            for _, selected in entries_df.iterrows() if not entries_df.empty else []:
-                tier_by_symbol[selected["symbol"]] = selected.get("tier", "unknown")
+            if not entries_df.empty:
+                for _, selected in entries_df.iterrows():
+                    tier_by_symbol[selected["symbol"]] = selected.get("tier", "unknown")
 
             for symbol, pos in list(portfolio.positions.items()):
                 row_df = today[today["symbol"] == symbol]
