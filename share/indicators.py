@@ -111,6 +111,12 @@ def add_indicators(
         g["breakout_60"] = c >= g["high_60"].shift(1)
 
         g["volume_ma20"] = g["volume"].rolling(20).mean()
+        g["turnover_proxy"] = c * g["volume"].astype(float)
+        signed_money = np.sign(g["daily_ret"]).fillna(0) * g["turnover_proxy"]
+        g["money_flow_proxy_20"] = (
+            signed_money.rolling(20).sum()
+            / g["turnover_proxy"].abs().rolling(20).sum().replace(0, np.nan)
+        )
         g["volume_ratio"] = g["volume"] / g["volume_ma20"].replace(0, np.nan)
         g["obv"] = _obv(g)
         g["obv_ma20"] = g["obv"].rolling(20).mean()
