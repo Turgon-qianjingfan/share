@@ -18,6 +18,7 @@ universe:
   min_distinct_industries: 3
   max_tactical_positions: 1
   tactical_allocation_ratio: 0.10
+  risk_budget_tolerance: 0.03
   profile_priority_weight: 0.20
   leader_priority_bonus: 0.05
   tier_policy:
