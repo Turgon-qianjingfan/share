@@ -11,6 +11,9 @@ class StrategyConfig:
     rsi_low: float = 45
     rsi_high: float = 72
     max_annualized_vol: float = 0.55
+    lookback_fast: int = 20
+    lookback_slow: int = 60
+    atr_window: int = 20
 
 def select_candidates(day: pd.DataFrame, cfg: StrategyConfig) -> list[str]:
     d = day.dropna(subset=["ma_fast","ma_slow","atr","rsi","ret_20","vol_20"]).copy()
