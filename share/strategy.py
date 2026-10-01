@@ -138,19 +138,23 @@ def is_core_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
 
 
 def is_tactical_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
-    """Tactical positions are reserved for unusually strong breakouts."""
+    """Tactical positions require either a true breakout or an extreme short-term surge."""
     if not _required_indicators_present(row):
         return False
-    return bool(
-        _breakout_entry_eligible(row, cfg)
-        and (
-            bool(row["breakout_20"])
-            or float(row["ret_5"]) >= cfg.tactical_min_5d_return
-        )
-        and float(row["volume_ratio"]) >= cfg.tactical_min_volume_ratio
-        and float(row["relative_strength_20"]) >= cfg.tactical_min_relative_strength
-        and float(row["ret_5"]) >= cfg.tactical_min_5d_return
+
+    common = bool(
+        row["close"] > row["ma_fast"]
+        and row["volume_ratio"] >= cfg.tactical_min_volume_ratio
+        and row["relative_strength_20"] >= cfg.tactical_min_relative_strength
+        and row["rsi"] >= 60
+        and row["rsi"] <= 85
+        and row["vol_20"] > 0
+        and row["vol_20"] <= 0.70
+        and row["adx"] >= 14
+        and row["ret_5"] >= cfg.tactical_min_5d_return
     )
+    breakout = bool(row["breakout_20"])
+    return bool(common and (breakout or row["ret_5"] >= cfg.tactical_min_5d_return + 0.01))
 
 
 def should_exit(
