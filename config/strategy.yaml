@@ -25,6 +25,9 @@ technical:
   trend_break_confirm_days: 3
   trail_atr_multiple: 3.2
   rebalance_threshold: 0.025
+  minimum_entry_score: 0.55
+  reentry_cooldown_days: 15
+  severe_event_reentry_days: 60
 
 weights:
   technical: 0.65
