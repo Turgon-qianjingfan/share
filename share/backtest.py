@@ -200,6 +200,27 @@ class Backtester:
             )
             current_total_weight = portfolio.market_value(next_prices) / max(equity_open, 1.0)
 
+            # Enforce the dynamic TOTAL portfolio risk budget. Reduce existing
+            # positions proportionally before considering new entries.
+            if current_total_weight > risk_budget:
+                reduction_ratio = 1.0 if risk_budget <= 0 else risk_budget / current_total_weight
+                for symbol, pos in list(portfolio.positions.items()):
+                    px = next_prices.get(symbol)
+                    if px is None:
+                        continue
+                    keep_qty = int((pos.quantity * reduction_ratio) // self.execution_cfg.lot_size) * self.execution_cfg.lot_size
+                    sell_qty = max(0, pos.quantity - keep_qty)
+                    if sell_qty > 0:
+                        sim.sell(
+                            dates[i + 1], symbol, px, sell_qty,
+                            "dynamic_total_risk_budget",
+                        )
+                equity_open = portfolio.cash + sum(
+                    p.quantity * next_prices.get(s, 0.0)
+                    for s, p in portfolio.positions.items()
+                )
+                current_total_weight = portfolio.market_value(next_prices) / max(equity_open, 1.0)
+
             targets = target_weights(entries, risk_budget, self.strategy_cfg.max_single_weight)
             for symbol, target_weight in targets.items():
                 if not is_entry_eligible(
