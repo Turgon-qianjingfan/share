@@ -52,6 +52,37 @@ def validate_profiles(profiles: pd.DataFrame) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
+
+def infer_profile_scores(day: pd.DataFrame) -> pd.DataFrame:
+    """Infer size/leadership scores from point-in-time market_cap when available.
+
+    This is a transparent heuristic: size is the cross-sectional market-cap
+    percentile; leadership combines within-industry market-cap rank and share
+    versus the largest company in the same industry. It never uses future rows.
+    """
+    out = day.copy()
+    out["inferred_size_score"] = 0.0
+    out["inferred_leader_score"] = 0.0
+    if "market_cap" not in out.columns:
+        return out
+
+    mc = pd.to_numeric(out["market_cap"], errors="coerce")
+    valid = mc.notna() & (mc > 0)
+    if not valid.any():
+        return out
+
+    out.loc[valid, "inferred_size_score"] = mc[valid].rank(pct=True)
+
+    industry = out.get("industry", pd.Series("", index=out.index)).fillna("").astype(str)
+    leader_rank = pd.Series(0.0, index=out.index)
+    leader_ratio = pd.Series(0.0, index=out.index)
+    for _, idx in out.loc[valid].groupby(industry[valid]).groups.items():
+        vals = mc.loc[idx]
+        leader_rank.loc[idx] = vals.rank(pct=True)
+        leader_ratio.loc[idx] = vals / vals.max()
+    out["inferred_leader_score"] = (0.50 * leader_rank + 0.50 * leader_ratio).clip(0, 1)
+    return out
+
 def load_profiles(path: str) -> pd.DataFrame:
     return validate_profiles(pd.read_csv(path))
 
@@ -87,9 +118,22 @@ def attach_profiles(day: pd.DataFrame, profiles: pd.DataFrame | None, signal_dat
             out["industry_profile"].notna() & (out["industry_profile"] != ""), out.get("industry", "")
         )
         out = out.drop(columns=["industry_profile"])
+
+    inferred = infer_profile_scores(out)
     out["tier"] = out["tier"].fillna("unknown").astype(str).str.lower()
     out["leader_score"] = pd.to_numeric(out["leader_score"], errors="coerce").fillna(0.0).clip(0, 1)
     out["size_score"] = pd.to_numeric(out["size_score"], errors="coerce").fillna(0.0).clip(0, 1)
+
+    # A point-in-time market-cap field can supply a fallback when no explicit
+    # profile score is present.
+    out.loc[out["leader_score"] <= 0, "leader_score"] = inferred["inferred_leader_score"]
+    out.loc[out["size_score"] <= 0, "size_score"] = inferred["inferred_size_score"]
+
+    unknown = out["tier"].eq("unknown")
+    out.loc[unknown & (out["leader_score"] >= 0.80), "tier"] = "leader"
+    out.loc[unknown & (out["size_score"] >= 0.80), "tier"] = "large"
+    out.loc[unknown & (out["size_score"] <= 0.20), "tier"] = "small"
+    out.loc[unknown, "tier"] = "mid"
     return out
 
 
