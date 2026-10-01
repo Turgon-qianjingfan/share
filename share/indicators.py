@@ -84,6 +84,16 @@ def add_indicators(
         g["boll_pos"] = (c - g["boll_lower"]) / (g["boll_upper"] - g["boll_lower"]).replace(0, np.nan)
 
         g["daily_ret"] = c.pct_change()
+        # A-share daily limit-up proxy by board. This is a research signal,
+        # not an exchange rule engine; ST/special-status names are not modeled.
+        code = str(symbol).split(".")[0]
+        limit_threshold = 0.195 if code.startswith(("300", "301", "688")) else 0.095
+        g["limit_up_like"] = g["daily_ret"] >= limit_threshold
+        g["limit_up_streak"] = (
+            g["limit_up_like"].astype(int)
+            .groupby((~g["limit_up_like"]).cumsum())
+            .cumsum()
+        )
         g["vol_20"] = g["daily_ret"].rolling(20).std() * np.sqrt(252)
         g["ret_5"] = c.pct_change(5)
         g["ret_20"] = c.pct_change(20)
