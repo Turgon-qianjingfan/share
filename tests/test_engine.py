@@ -180,3 +180,12 @@ def test_quality_breakout_entry_can_chase_strong_move():
         "volume_ratio": 1.40, "relative_strength_20": 0.06, "breakout_20": True,
     })
     assert is_entry_eligible(row, StrategyConfig()) is True
+
+
+def test_validate_profiles_accepts_tactical_tier():
+    from share.universe import validate_profiles
+    out = validate_profiles(pd.DataFrame([{
+        "symbol": "002164.SZ", "industry": "工业机械", "tier": "tactical",
+        "leader_score": 0.2, "size_score": 0.4, "effective_date": "2022-08-16"
+    }]))
+    assert out.iloc[0]["tier"] == "tactical"
