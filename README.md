@@ -73,3 +73,18 @@ Recent single-stock regression tests on the latest available 1,000 daily bars:
 - 600988.SH: final equity about 205,626 yuan; maximum drawdown about -3.68%; about 22 trades.
 
 These tests are diagnostic only and do not replace the required five-year, full-universe, walk-forward validation.
+
+
+## V3 research status
+
+V3 is currently a research candidate, not the production baseline.
+
+The 2026-10-01 preliminary test used 10 diversified A-shares, 1,000 daily bars per stock, and 510300.SH as a market-regime proxy. It also included a point-in-time event feed structure for company and industry news.
+
+Preliminary findings:
+- V3 increased the average realised equity exposure relative to V2, but exposure remained well below the 40% ceiling.
+- The sample still experienced material drawdown, so V3 is not yet accepted as a safer replacement for V2.
+- News/events are now first-class inputs rather than narrative annotations. Company events can affect rank and trigger risk exits; industry events affect the industry component of the score.
+- The full five-year, point-in-time dataset is still blocked by the current Longbridge historical market-data entitlement.
+
+Promotion rule: V3 should only replace the main strategy after multi-year walk-forward validation, stress testing, and comparison against V2 on the same data.
