@@ -49,7 +49,7 @@ def grid_train(
 
     weight_sum_ok = lambda tw, ew, iw: abs(tw + ew + iw - 1.0) < 1e-9
 
-    for fast, slow, rsi_low, rsi_high, min_adx, trail, tw, ew, iw in product(
+    for fast, slow, rsi_low, rsi_high, min_adx, trail, tw, ew, iw, min_score, reentry_days in product(
         grid["lookback_fast"], grid["lookback_slow"],
         grid["entry_rsi_low"], grid["entry_rsi_high"],
         grid["min_adx"], grid["trail_atr_multiple"],
@@ -69,7 +69,7 @@ def grid_train(
             technical_weight=tw,
             event_weight=ew,
             industry_weight=iw,
-            minimum_entry_score=min_score,
+            minimum_entry_score=float(min_score),
             reentry_cooldown_days=int(reentry_days),
         )
         equity, trades = Backtester(
