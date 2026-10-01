@@ -143,9 +143,9 @@ def test_tactical_entry_requires_limit_up_and_flow_confirmation():
             "ret_5": 0.06, "ret_20": 0.10, "ret_60": 0.20, "vol_20": 0.30, "adx": 25,
             "volume_ratio": 1.40, "relative_strength_20": 0.04, "obv_trend": True,
             "money_flow_proxy_20": 0.12, "limit_up_streak": 2}
-    assert is_tactical_entry_eligible(pd.Series(base), StrategyConfig()) is True
+    assert is_tactical_entry_eligible(pd.Series(base), StrategyConfig(), company_score=0.10, industry_score=0.05) is True
     base["money_flow_proxy_20"] = 0.05
-    assert is_tactical_entry_eligible(pd.Series(base), StrategyConfig()) is False
+    assert is_tactical_entry_eligible(pd.Series(base), StrategyConfig(), company_score=0.10, industry_score=0.05) is False
 
 
 def test_market_cap_can_drive_point_in_time_size_and_leadership_scores():
