@@ -104,7 +104,7 @@ def is_tactical_tier(tier: str) -> bool:
     return str(tier).lower() in TACTICAL_TIERS
 
 
-def enrich_ranked_candidates(ranked: pd.DataFrame) -> pd.DataFrame:
+def enrich_ranked_candidates(ranked: pd.DataFrame, priority_weight: float = 0.10) -> pd.DataFrame:
     out = ranked.copy()
     if out.empty:
         for c in ["industry", "tier", "leader_score", "size_score", "profile_priority", "selection_score"]:
@@ -115,7 +115,7 @@ def enrich_ranked_candidates(ranked: pd.DataFrame) -> pd.DataFrame:
     out["tier"] = out["tier"].fillna("unknown").astype(str).str.lower()
     out["industry"] = out["industry"].fillna("").astype(str)
     out["profile_priority"] = out.apply(profile_priority, axis=1)
-    out["selection_score"] = out["composite_score"] + 0.10 * out["profile_priority"]
+    out["selection_score"] = out["composite_score"] + max(0.0, priority_weight) * out["profile_priority"]
     return out.sort_values(
         ["selection_score", "composite_score", "technical_score"],
         ascending=False,
