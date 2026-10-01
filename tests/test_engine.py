@@ -137,15 +137,15 @@ def test_selection_prioritises_core_and_diversifies_industries():
     assert out.iloc[0]["tier"] != "small"
 
 
-def test_tactical_entry_requires_strong_short_term_momentum():
+def test_tactical_entry_requires_limit_up_and_flow_confirmation():
     from share.strategy import is_tactical_entry_eligible, StrategyConfig
-    base = {"close": 110, "ma_fast": 105, "ma_slow": 100, "atr": 2, "rsi": 60,
-            "ret_5": 0.01, "ret_20": 0.05, "ret_60": 0.10, "vol_20": 0.20, "adx": 25,
-            "volume_ratio": 1.39, "relative_strength_20": 0.05, "breakout_20": False}
-    assert is_tactical_entry_eligible(pd.Series(base), StrategyConfig()) is False
-    base["ret_5"] = 0.04
-    base["volume_ratio"] = 1.45
+    base = {"close": 110, "ma_fast": 105, "ma_slow": 100, "atr": 2, "rsi": 75,
+            "ret_5": 0.06, "ret_20": 0.10, "ret_60": 0.20, "vol_20": 0.30, "adx": 25,
+            "volume_ratio": 1.40, "relative_strength_20": 0.04, "obv_trend": True,
+            "money_flow_proxy_20": 0.12, "limit_up_streak": 2}
     assert is_tactical_entry_eligible(pd.Series(base), StrategyConfig()) is True
+    base["money_flow_proxy_20"] = 0.05
+    assert is_tactical_entry_eligible(pd.Series(base), StrategyConfig()) is False
 
 
 def test_market_cap_can_drive_point_in_time_size_and_leadership_scores():
