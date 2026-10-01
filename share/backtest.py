@@ -118,6 +118,7 @@ class Backtester:
         stable_regime = "neutral"
         last_exit_date: dict[str, pd.Timestamp] = {}
         severe_event_exit_date: dict[str, pd.Timestamp] = {}
+        held_mode: dict[str, str] = {}
 
         for i, date in enumerate(dates[:-1]):
             sold_today: set[str] = set()
@@ -259,6 +260,7 @@ class Backtester:
                         sold_today.add(symbol)
                         if symbol not in portfolio.positions:
                             last_exit_date[symbol] = pd.Timestamp(dates[i + 1])
+                            held_mode.pop(symbol, None)
                             if reason == "severe_negative_company_event":
                                 severe_event_exit_date[symbol] = pd.Timestamp(dates[i + 1])
 
@@ -282,7 +284,7 @@ class Backtester:
                     if px is None or row_df.empty:
                         continue
                     row = row_df.iloc[0]
-                    tier = tier_by_symbol.get(symbol, "unknown")
+                    tier = held_mode.get(symbol, tier_by_symbol.get(symbol, "unknown"))
                     e = event_scores.get(symbol, {})
                     try:
                         strength = float(row.get("technical_score", 0.0))
@@ -374,6 +376,7 @@ class Backtester:
                 if buy_qty <= 0:
                     continue
                 sim.buy(dates[i + 1], symbol, px, buy_qty, "v3_tactical_entry" if is_tactical_tier(tier) else "v3_core_entry")
+                held_mode[symbol] = tier
 
             prices = dict(zip(next_day["symbol"], next_day["close"]))
             end_equity = portfolio.equity(prices)
