@@ -140,3 +140,19 @@ def test_tactical_entry_requires_short_term_momentum():
     assert is_tactical_entry_eligible(pd.Series(base), StrategyConfig()) is False
     base["ret_5"]=0.04
     assert is_tactical_entry_eligible(pd.Series(base), StrategyConfig()) is True
+
+def test_market_cap_can_drive_point_in_time_size_and_leadership_scores():
+    from share.universe import attach_profiles
+
+    day = pd.DataFrame([
+        {"symbol":"A","industry":"行业甲","market_cap":1000},
+        {"symbol":"B","industry":"行业甲","market_cap":500},
+        {"symbol":"C","industry":"行业乙","market_cap":100},
+    ])
+    out = attach_profiles(day, None, pd.Timestamp("2026-01-02"))
+    a = out[out["symbol"]=="A"].iloc[0]
+    b = out[out["symbol"]=="B"].iloc[0]
+    c = out[out["symbol"]=="C"].iloc[0]
+    assert a["size_score"] > b["size_score"] > c["size_score"]
+    assert a["leader_score"] > b["leader_score"]
+    assert c["leader_score"] == 0
