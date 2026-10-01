@@ -15,4 +15,5 @@ jobs:
           python-version: "3.11"
       - run: pip install -e ".[dev]"
       - run: pytest -q
+      - run: python scripts/run_v3_demo.py
       - run: python run_backtest.py --demo
