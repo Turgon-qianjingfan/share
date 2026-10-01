@@ -10,6 +10,7 @@ DATA="data/demo/v3_diversified_10stocks.csv"
 BENCHMARK="data/demo/510300_SH_1000d.csv"
 EVENTS="data/events/demo_company_events.csv"
 INDUSTRIES="data/industry_map.csv"
+STOCK_PROFILES="data/stock_profiles_template.csv"
 
 def main():
     data=load_csv(DATA)
@@ -17,9 +18,11 @@ def main():
     events=pd.read_csv(EVENTS)
     mapping=pd.read_csv(INDUSTRIES)
     industry_map=dict(zip(mapping["symbol"],mapping["industry"]))
+    stock_profiles=pd.read_csv(STOCK_PROFILES) if __import__("os").path.exists(STOCK_PROFILES) else None
 
     equity,trades=Backtester(initial_cash=200_000).run(
-        data, benchmark=benchmark, events=events, industry_map=industry_map
+        data, benchmark=benchmark, events=events, industry_map=industry_map,
+        stock_profiles=stock_profiles
     )
     metrics=summarize(equity,200_000)
 
@@ -31,6 +34,7 @@ def main():
     print(f"trades={len(trades)}")
     if not equity.empty:
         print(f"avg_risk_budget={equity['risk_budget'].mean():.6f}")
+        print(f"avg_equity_exposure={((equity['equity']-equity['cash'])/equity['equity']).mean():.6f}")
         print(f"avg_breadth={equity['breadth'].mean():.6f}")
         print("market_regime_counts=")
         print(equity["market_regime"].value_counts().to_string())
