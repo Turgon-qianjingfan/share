@@ -78,8 +78,9 @@ def infer_profile_scores(day: pd.DataFrame) -> pd.DataFrame:
     leader_ratio = pd.Series(0.0, index=out.index)
     for _, idx in out.loc[valid].groupby(industry[valid]).groups.items():
         vals = mc.loc[idx]
-        leader_rank.loc[idx] = vals.rank(pct=True)
-        leader_ratio.loc[idx] = vals / vals.max()
+        if len(vals) >= 2:
+            leader_rank.loc[idx] = vals.rank(pct=True)
+            leader_ratio.loc[idx] = vals / vals.max()
     out["inferred_leader_score"] = (0.50 * leader_rank + 0.50 * leader_ratio).clip(0, 1)
     return out
 
