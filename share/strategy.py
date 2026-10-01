@@ -16,9 +16,9 @@ from .universe import (
 
 @dataclass(frozen=True)
 class StrategyConfig:
-    max_single_weight: float = 0.08
-    max_tactical_weight: float = 0.04
-    max_equity_weight: float = 0.40
+    max_single_weight: float = 0.10
+    max_tactical_weight: float = 0.05
+    max_equity_weight: float = 0.50
     target_positions: int = 5
     min_history: int = 120
     lookback_trading_days: int = 1000
@@ -29,35 +29,35 @@ class StrategyConfig:
     rsi_window: int = 14
 
     entry_rsi_low: float = 42
-    entry_rsi_high: float = 78
-    max_entry_annualized_vol: float = 0.65
-    min_20d_return: float = -0.02
+    entry_rsi_high: float = 88
+    max_entry_annualized_vol: float = 0.80
+    min_20d_return: float = -0.05
     min_adx: float = 15
 
-    min_holding_days: int = 10
-    trend_break_confirm_days: int = 3
-    trail_atr_multiple: float = 3.2
+    min_holding_days: int = 7
+    trend_break_confirm_days: int = 2
+    trail_atr_multiple: float = 3.4
     hold_ma_buffer: float = 0.985
 
-    tactical_minimum_entry_score: float = 0.62
-    tactical_min_5d_return: float = 0.03
-    tactical_min_volume_ratio: float = 1.20
-    tactical_min_relative_strength: float = 0.0
+    tactical_minimum_entry_score: float = 0.50
+    tactical_min_5d_return: float = 0.02
+    tactical_min_volume_ratio: float = 1.10
+    tactical_min_relative_strength: float = -0.01
     tactical_min_holding_days: int = 3
-    tactical_trail_atr_multiple: float = 2.5
+    tactical_trail_atr_multiple: float = 2.8
     max_tactical_positions: int = 2
     tactical_allocation_ratio: float = 0.20
 
     max_industry_positions: int = 2
     min_distinct_industries: int = 3
-    profile_priority_weight: float = 0.10
+    profile_priority_weight: float = 0.12
 
     rebalance_threshold: float = 0.025
     technical_weight: float = 0.65
     event_weight: float = 0.20
     industry_weight: float = 0.15
     minimum_entry_score: float = 0.55
-    reentry_cooldown_days: int = 15
+    reentry_cooldown_days: int = 10
     severe_event_reentry_days: int = 60
 
 
@@ -70,6 +70,11 @@ def technical_score(row: pd.Series) -> float:
     score += (1.0 if row["obv_trend"] else 0.0) * 0.08
     score += min(max(row["volume_ratio"] - 0.8, 0), 1.5) / 1.5 * 0.06
     score += (1.0 if row["breakout_20"] else 0.0) * 0.08
+    score += (1.0 if row["breakout_60"] else 0.0) * 0.06
+    chase = 1.0 if bool(row["breakout_20"]) and float(row["volume_ratio"]) >= 1.25 else 0.0
+    score += chase * 0.05
+    boll = float(row["boll_pos"]) if pd.notna(row.get("boll_pos")) else 0.5
+    score += min(max(boll - 0.65, 0.0), 0.35) / 0.35 * 0.04
     score += min(max(row["relative_strength_20"], -0.10), 0.20) / 0.30 * 0.10
     risk_penalty = min(max(row["atr_pct"] - 0.02, 0), 0.08) / 0.08 * 0.18
     return max(0.0, score - risk_penalty)
@@ -91,7 +96,7 @@ def is_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
         and row["vol_20"] > 0
         and row["vol_20"] <= cfg.max_entry_annualized_vol
         and row["adx"] >= cfg.min_adx
-        and row["relative_strength_20"] > -0.03
+        and row["relative_strength_20"] > -0.05
     )
 
 
