@@ -13,12 +13,15 @@ def summarize(equity: pd.DataFrame, initial_cash: float) -> dict:
     sharpe = float(daily.mean() / daily.std() * np.sqrt(252)) if daily.std() > 0 else 0.0
     years = max((s.index[-1] - s.index[0]).days / 365.25, 1/365.25)
     cagr = (s.iloc[-1] / initial_cash) ** (1 / years) - 1
+    minimum_equity = float(s.min())
     return {"initial_cash": float(initial_cash), "final_equity": float(s.iloc[-1]),
             "total_return": float(s.iloc[-1] / initial_cash - 1), "cagr": float(cagr),
             "max_drawdown": float(drawdown.min()), "sharpe": sharpe,
-            "trading_days": int(len(s)), "principal_preserved": bool(s.iloc[-1] >= initial_cash),
-            "minimum_equity": float(s.min()),
-            "minimum_equity_vs_principal": float(s.min() / initial_cash - 1)}
+            "trading_days": int(len(s)),
+            "principal_preserved": bool(minimum_equity >= initial_cash),
+            "ending_capital_above_initial": bool(s.iloc[-1] >= initial_cash),
+            "minimum_equity": minimum_equity,
+            "minimum_equity_vs_principal": float(minimum_equity / initial_cash - 1)}
 
 def walk_forward_splits(dates, train_days=504, test_days=126, purge_days=5):
     dates = pd.DatetimeIndex(sorted(pd.to_datetime(dates).unique()))
