@@ -39,7 +39,15 @@ INDUSTRY = {
 def load_expanded():
     frames = [load_csv(BASE)]
     for path in EXTRAS:
-        frames.append(load_csv(path))
+        extra = pd.read_csv(path)
+        extra["date"] = pd.to_datetime(extra["date"])
+        for col in ["open", "high", "low", "close", "volume"]:
+            extra[col] = pd.to_numeric(extra[col], errors="raise")
+        # Filter pre-listing placeholders before applying the project's strict
+        # OHLC validator. Longbridge may represent pre-listing days as zeros.
+        extra = extra[(extra[["open", "high", "low", "close"]] > 0).all(axis=1)].copy()
+        extra = extra.sort_values(["symbol", "date"]).drop_duplicates(["symbol", "date"])
+        frames.append(extra)
     raw = pd.concat(frames, ignore_index=True)
     for col in ["open", "high", "low", "close", "volume"]:
         raw[col] = pd.to_numeric(raw[col], errors="coerce")
