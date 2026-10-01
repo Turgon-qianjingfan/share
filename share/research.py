@@ -40,6 +40,7 @@ def grid_train(
     benchmark: pd.DataFrame | None = None,
     events: pd.DataFrame | None = None,
     industry_map: dict[str, str] | None = None,
+    stock_profiles: pd.DataFrame | None = None,
     initial_cash: float = 200_000,
     hard_drawdown: float = 0.08,
     grid: dict | None = None,
@@ -80,7 +81,8 @@ def grid_train(
             strategy_cfg=cfg,
             hard_drawdown_limit=hard_drawdown,
         ).run(
-            data, benchmark=benchmark, events=events, industry_map=industry_map
+            data, benchmark=benchmark, events=events, industry_map=industry_map,
+            stock_profiles=stock_profiles,
         )
         m = summarize(equity, initial_cash)
         results.append({
@@ -113,6 +115,7 @@ def walk_forward_train(
     benchmark: pd.DataFrame | None = None,
     events: pd.DataFrame | None = None,
     industry_map: dict[str, str] | None = None,
+    stock_profiles: pd.DataFrame | None = None,
     initial_cash: float = 200_000,
     train_days: int = 504,
     test_days: int = 126,
@@ -145,6 +148,7 @@ def walk_forward_train(
             benchmark=train_benchmark,
             events=train_events,
             industry_map=industry_map,
+            stock_profiles=stock_profiles,
             initial_cash=initial_cash,
             hard_drawdown=hard_drawdown,
         )
