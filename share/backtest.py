@@ -35,7 +35,7 @@ class Backtester:
         self.cooldown_days = cooldown_days
 
     def run(self, data: pd.DataFrame):
-        data = add_indicators(data)
+        data = add_indicators(data, fast=self.strategy_cfg.lookback_fast, slow=self.strategy_cfg.lookback_slow, atr_window=self.strategy_cfg.atr_window)
         portfolio = Portfolio(self.initial_cash)
         sim = Simulator(portfolio, self.execution_cfg)
         rows = []
