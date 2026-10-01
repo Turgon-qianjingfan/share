@@ -1,19 +1,24 @@
 from __future__ import annotations
-import pandas as pd
 from dataclasses import dataclass
+import pandas as pd
 
 @dataclass(frozen=True)
 class StrategyConfig:
-    max_single_weight: float = 0.10
-    max_equity_weight: float = 0.60
-    target_positions: int = 6
+    max_single_weight: float = 0.08
+    max_equity_weight: float = 0.40
+    target_positions: int = 5
     min_history: int = 80
+    rsi_low: float = 45
+    rsi_high: float = 72
+    max_annualized_vol: float = 0.55
 
 def select_candidates(day: pd.DataFrame, cfg: StrategyConfig) -> list[str]:
     d = day.dropna(subset=["ma_fast","ma_slow","atr","rsi","ret_20","vol_20"]).copy()
+    if d.empty:
+        return []
     d = d[(d["close"] > d["ma_slow"]) & (d["ma_fast"] > d["ma_slow"])]
-    d = d[(d["rsi"] >= 45) & (d["rsi"] <= 72)]
-    d = d[(d["vol_20"] > 0) & (d["vol_20"] <= 0.55)]
+    d = d[(d["rsi"] >= cfg.rsi_low) & (d["rsi"] <= cfg.rsi_high)]
+    d = d[(d["vol_20"] > 0) & (d["vol_20"] <= cfg.max_annualized_vol)]
     if d.empty:
         return []
     d["score"] = (
