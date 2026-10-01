@@ -162,3 +162,12 @@ def test_moderate_aggression_allows_higher_core_exposure():
     cfg = StrategyConfig(max_single_weight=0.10, max_equity_weight=0.50)
     out = target_weights(["A","B","C","D","E"], 0.50, cfg.max_single_weight)
     assert abs(sum(out.values()) - 0.50) < 1e-9
+
+def test_quality_breakout_entry_can_chase_strong_move():
+    from share.strategy import is_entry_eligible, StrategyConfig
+    row=pd.Series({
+        "close":110,"ma_fast":100,"ma_slow":105,"atr":2,"rsi":70,
+        "ret_5":0.04,"ret_20":0.08,"ret_60":0.12,"vol_20":0.35,"adx":18,
+        "volume_ratio":1.40,"relative_strength_20":0.06,"breakout_20":True,
+    })
+    assert is_entry_eligible(row, StrategyConfig()) is True
