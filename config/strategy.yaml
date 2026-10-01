@@ -1,23 +1,43 @@
 initial_cash: 200000
+
 capital_preservation:
   enabled: true
   max_equity_weight: 0.40
   min_cash_weight: 0.60
-  hard_drawdown_limit: 0.08
   warning_drawdown_limit: 0.05
-  recovery_drawdown_limit: 0.03
+  hard_drawdown_limit: 0.08
   cooldown_days: 10
+  principal_guard_weight: 0.20
+
 max_single_weight: 0.08
 target_positions: 5
+
 lookback_fast: 20
 lookback_slow: 60
 atr_window: 20
 rsi_window: 14
 min_history: 80
-commission_rate: 0.0003
-stamp_duty_rate: 0.0005
-slippage_rate: 0.0005
-lot_size: 100
+
+entry:
+  rsi_low: 45
+  rsi_high: 72
+  max_annualized_vol: 0.60
+  min_20d_return: 0.00
+
+holding:
+  min_holding_days: 10
+  trend_break_confirm_days: 3
+  trail_atr_multiple: 3.0
+  hold_ma_buffer: 0.985
+
+execution:
+  commission_rate: 0.0003
+  stamp_duty_rate: 0.0005
+  slippage_rate: 0.0005
+  lot_size: 100
+
+trading:
+  rebalance_threshold: 0.025
 
 research:
   history_start: "2021-10-01"
