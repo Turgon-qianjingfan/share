@@ -26,6 +26,9 @@ class StrategyConfig:
     technical_weight: float = 0.65
     event_weight: float = 0.20
     industry_weight: float = 0.15
+    minimum_entry_score: float = 0.55
+    reentry_cooldown_days: int = 15
+    severe_event_reentry_days: int = 60
 
 
 def technical_score(row: pd.Series) -> float:
