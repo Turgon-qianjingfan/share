@@ -41,6 +41,11 @@ def load_expanded():
     for path in EXTRAS:
         frames.append(load_csv(path))
     raw = pd.concat(frames, ignore_index=True)
+    for col in ["open", "high", "low", "close", "volume"]:
+        raw[col] = pd.to_numeric(raw[col], errors="coerce")
+    # Longbridge may return pre-listing zero placeholders for newly listed stocks.
+    # Those rows are not historical market data and must not enter the backtest.
+    raw = raw[(raw[["open", "high", "low", "close"]] > 0).all(axis=1)].copy()
     raw = raw.drop_duplicates(["date", "symbol"], keep="first")
     raw["industry"] = raw["symbol"].map(INDUSTRY).fillna("其他")
     benchmark = raw[raw["symbol"] == BENCHMARK].copy()
