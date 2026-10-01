@@ -7,7 +7,9 @@ import pandas as pd
 from share.backtest import Backtester
 from share.data import load_csv
 from share.metrics import summarize
-from share.strategy import StrategyConfig
+from share.strategy import StrategyConfig, rank_candidates
+from share.indicators import add_indicators, add_relative_strength
+from share.events import EventConfig, event_score_for_day, validate_events
 
 DATA_FILES = [
     Path("data/demo/v3_3_lb_16stocks_a.csv"),
@@ -67,6 +69,36 @@ def run_case(name, data, benchmark, profiles, events):
 def main():
     data, benchmark, profiles = load_expanded()
     events = pd.read_csv(EVENTS) if EVENTS.exists() else None
+
+    # Diagnostics on the latest signal date: distinguish "no eligible signal"
+    # from downstream portfolio construction constraints.
+    diag_data = add_indicators(data.copy())
+    diag_bench = add_indicators(benchmark.assign(symbol="MARKET_PROXY"))
+    diag_data = add_relative_strength(diag_data, diag_bench)
+    last_date = diag_data["date"].max()
+    last = diag_data[diag_data["date"] == last_date].copy()
+    event_df = validate_events(events) if events is not None and not events.empty else pd.DataFrame()
+    profiled = pd.read_csv(PROFILES)
+    industries = dict(zip(profiled["symbol"], profiled["industry"]))
+    event_scores = {
+        symbol: event_score_for_day(
+            event_df, symbol=symbol, industry=industries.get(symbol, ""),
+            signal_date=pd.Timestamp(last_date), cfg=EventConfig(),
+        )
+        for symbol in last["symbol"].unique()
+    }
+    diag_ranked = rank_candidates(
+        last, event_scores, StrategyConfig(),
+        stock_profiles=profiled, signal_date=pd.Timestamp(last_date)
+    )
+
+    print(f"diagnostic_last_date={last_date.date()}")
+    print(f"diagnostic_ranked_count={len(diag_ranked)}")
+    if not diag_ranked.empty:
+        print("diagnostic_top=", diag_ranked[[
+            "symbol","industry","tier","leader_score","dynamic_leader_score",
+            "technical_score","composite_score","selection_score"
+        ]].head(10).to_dict("records"))
 
     print("=== V3.3 Expanded Longbridge / 34-stock / 1,000-day regression ===")
     print(f"range={data['date'].min().date()}..{data['date'].max().date()}")
