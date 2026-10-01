@@ -154,7 +154,7 @@ def is_tactical_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
         and row["ret_5"] >= cfg.tactical_min_5d_return
     )
     breakout = bool(row["breakout_20"])
-    return bool(common and (breakout or row["ret_5"] >= cfg.tactical_min_5d_return + 0.01))
+    return bool(common and (breakout or row["ret_5"] >= cfg.tactical_min_5d_return))
 
 
 def should_exit(
