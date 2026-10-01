@@ -1,9 +1,14 @@
-initial_cash: 1000000
-max_single_weight: 0.10
-max_equity_weight: 0.60
-min_cash_weight: 0.40
-max_risk_per_trade: 0.005
-target_positions: 6
+initial_cash: 200000
+capital_preservation:
+  enabled: true
+  max_equity_weight: 0.40
+  min_cash_weight: 0.60
+  hard_drawdown_limit: 0.08
+  warning_drawdown_limit: 0.05
+  recovery_drawdown_limit: 0.03
+  cooldown_days: 10
+max_single_weight: 0.08
+target_positions: 5
 lookback_fast: 20
 lookback_slow: 60
 atr_window: 20
@@ -13,3 +18,12 @@ commission_rate: 0.0003
 stamp_duty_rate: 0.0005
 slippage_rate: 0.0005
 lot_size: 100
+
+research:
+  history_start: "2021-10-01"
+  history_end: "2026-10-01"
+  validation_method: "walk_forward"
+  train_days: 504
+  test_days: 126
+  purge_days: 5
+  embargo_days: 1
