@@ -9,8 +9,23 @@ capital_preservation:
   principal_guard_weight: 0.20
   cooldown_days: 10
 
-max_single_weight: 0.08
-target_positions: 5
+universe:
+  lookback_trading_days: 1000
+  target_positions: 5
+  max_single_weight: 0.08
+  max_tactical_weight: 0.04
+  max_industry_positions: 2
+  min_distinct_industries: 3
+  max_tactical_positions: 2
+  tactical_allocation_ratio: 0.20
+  profile_priority_weight: 0.10
+  tier_policy:
+    leader: core
+    large: core
+    mid: core
+    small: tactical
+    micro: tactical
+    unknown: neutral
 
 technical:
   lookback_fast: 20
@@ -24,9 +39,17 @@ technical:
   min_holding_days: 10
   trend_break_confirm_days: 3
   trail_atr_multiple: 3.2
-  rebalance_threshold: 0.025
   minimum_entry_score: 0.55
-  reentry_cooldown_days: 15
+  rebalance_threshold: 0.025
+
+tactical:
+  minimum_entry_score: 0.62
+  min_5d_return: 0.03
+  min_volume_ratio: 1.20
+  min_relative_strength: 0.0
+  min_holding_days: 3
+  trail_atr_multiple: 2.5
+  reentry_cooldown_days: 10
   severe_event_reentry_days: 60
 
 weights:
@@ -53,8 +76,7 @@ execution:
   lot_size: 100
 
 research:
-  history_start: "2021-10-01"
-  history_end: "2026-10-01"
+  lookback_trading_days: 1000
   validation_method: "walk_forward"
   train_days: 504
   test_days: 126
