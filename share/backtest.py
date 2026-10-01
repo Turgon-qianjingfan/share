@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import pandas as pd
 
 from .data import load_csv, limit_to_trading_days
@@ -7,7 +9,7 @@ from .indicators import add_indicators, add_relative_strength
 from .strategy import (
     StrategyConfig,
     is_core_entry_eligible,
-    is_entry_eligible,
+    is_tactical_entry_eligible,
     rank_candidates,
     select_entries,
     should_exit,
@@ -267,22 +269,58 @@ class Backtester:
             )
             current_total_weight = portfolio.market_value(next_prices) / max(equity_open, 1.0)
 
-            if current_total_weight > risk_budget:
-                reduction_ratio = 0.0 if risk_budget <= 0 else risk_budget / current_total_weight
-                for symbol, pos in list(portfolio.positions.items()):
+            excess_weight = current_total_weight - risk_budget
+            # Keep a small tolerance band so ordinary regime fluctuations do not
+            # repeatedly trim positions. When a real reduction is needed, cut
+            # tactical/weak positions first and protect leaders for last.
+            if risk_budget <= 0 or excess_weight > self.strategy_cfg.risk_budget_tolerance:
+                removal_value = max(0.0, equity_open * max(excess_weight, 0.0))
+                reduction_rows = []
+                for symbol, pos in portfolio.positions.items():
                     px = next_prices.get(symbol)
-                    if px is None:
+                    row_df = today[today["symbol"] == symbol]
+                    if px is None or row_df.empty:
                         continue
-                    keep_qty = int(
-                        (pos.quantity * reduction_ratio) / self.execution_cfg.lot_size
-                    ) * self.execution_cfg.lot_size
-                    sell_qty = max(0, pos.quantity - keep_qty)
-                    if sell_qty > 0:
-                        if sim.sell(
-                            dates[i + 1], symbol, px, sell_qty,
-                            "dynamic_total_risk_budget",
-                        ):
-                            sold_today.add(symbol)
+                    row = row_df.iloc[0]
+                    tier = tier_by_symbol.get(symbol, "unknown")
+                    e = event_scores.get(symbol, {})
+                    try:
+                        strength = float(row.get("technical_score", 0.0))
+                    except (TypeError, ValueError):
+                        strength = 0.0
+                    # Lower bucket is reduced first. Tactical -> other core -> leader.
+                    leader_rank = 2 if str(tier).lower() == "leader" else 1 if str(tier).lower() in {"large", "mid"} else 0
+                    reduction_rows.append((
+                        leader_rank,
+                        strength,
+                        float(e.get("company_score", 0.0)),
+                        symbol,
+                        pos,
+                        float(px),
+                    ))
+                reduction_rows.sort(key=lambda x: (x[0], x[1], x[2]))
+                for _, _, _, symbol, pos, px in reduction_rows:
+                    if removal_value <= 0:
+                        break
+                    # Prefer fully closing a weak/small position. For the final
+                    # position, sell only enough whole lots to remove the excess.
+                    sell_qty = min(
+                        pos.quantity,
+                        max(
+                            self.execution_cfg.lot_size,
+                            int(math.ceil(removal_value / px / self.execution_cfg.lot_size))
+                            * self.execution_cfg.lot_size,
+                        ),
+                    )
+                    sell_qty = int(sell_qty / self.execution_cfg.lot_size) * self.execution_cfg.lot_size
+                    if sell_qty <= 0:
+                        continue
+                    if sim.sell(
+                        dates[i + 1], symbol, px, sell_qty,
+                        "dynamic_total_risk_budget",
+                    ):
+                        sold_today.add(symbol)
+                        removal_value = max(0.0, removal_value - sell_qty * px)
 
             equity_open = portfolio.cash + sum(
                 p.quantity * next_prices.get(s, 0.0)
@@ -314,7 +352,7 @@ class Backtester:
                 row = row_df.iloc[0]
                 tier = tier_by_symbol.get(symbol, "unknown")
                 if is_tactical_tier(tier):
-                    entry_ok = stable_regime == "risk_on" and is_entry_eligible(row, self.strategy_cfg)
+                    entry_ok = stable_regime == "risk_on" and is_tactical_entry_eligible(row, self.strategy_cfg)
                 else:
                     entry_ok = stable_regime in {"risk_on", "neutral"} and is_core_entry_eligible(row, self.strategy_cfg)
                 if not entry_ok:
@@ -324,7 +362,7 @@ class Backtester:
                 buy_qty = int(desired_value / px)
                 if buy_qty <= 0:
                     continue
-                sim.buy(dates[i + 1], symbol, px, buy_qty, "v3_new_position_entry")
+                sim.buy(dates[i + 1], symbol, px, buy_qty, "v3_tactical_entry" if is_tactical_tier(tier) else "v3_core_entry")
 
             prices = dict(zip(next_day["symbol"], next_day["close"]))
             end_equity = portfolio.equity(prices)
