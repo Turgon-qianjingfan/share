@@ -83,6 +83,8 @@ def add_indicators(
         g["boll_width"] = (g["boll_upper"] - g["boll_lower"]) / mid.replace(0, np.nan)
         g["boll_pos"] = (c - g["boll_lower"]) / (g["boll_upper"] - g["boll_lower"]).replace(0, np.nan)
 
+        g["daily_ret"] = c.pct_change()
+        g["vol_20"] = g["daily_ret"].rolling(20).std() * np.sqrt(252)
         g["ret_5"] = c.pct_change(5)
         g["ret_20"] = c.pct_change(20)
         g["ret_60"] = c.pct_change(60)
