@@ -52,6 +52,7 @@ class StrategyConfig:
     tactical_trail_atr_multiple: float = 2.5
     max_tactical_positions: int = 1
     tactical_allocation_ratio: float = 0.10
+    risk_budget_tolerance: float = 0.03
 
     max_industry_positions: int = 2
     min_distinct_industries: int = 3
