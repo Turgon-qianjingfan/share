@@ -12,7 +12,9 @@ TIER_PRIORITY = {
 }
 
 CORE_TIERS = {"leader", "large", "mid"}
-TACTICAL_TIERS = {"small", "micro"}
+TACTICAL_TIERS = {"small", "micro", "tactical"}
+
+DEFENSIVE_INDUSTRIES = {"银行", "保险", "公共事业", "通信", "食品饮料", "家电", "医药"}
 
 REQUIRED_PROFILE_FIELDS = ["symbol", "industry", "tier"]
 
@@ -125,6 +127,7 @@ def attach_profiles(day: pd.DataFrame, profiles: pd.DataFrame | None, signal_dat
         out["leader_score"] = pd.to_numeric(out["leader_score"], errors="coerce").fillna(0.0).clip(0, 1)
         out["size_score"] = pd.to_numeric(out["size_score"], errors="coerce").fillna(0.0).clip(0, 1)
 
+    out = point_in_time_leadership(out)
     inferred = infer_profile_scores(out)
 
     out.loc[out["leader_score"] <= 0, "leader_score"] = inferred["inferred_leader_score"]
@@ -138,11 +141,44 @@ def attach_profiles(day: pd.DataFrame, profiles: pd.DataFrame | None, signal_dat
     return out
 
 
+def point_in_time_leadership(day: pd.DataFrame) -> pd.DataFrame:
+    """Estimate leadership from information available on the signal date only.
+
+    Within each industry, combine 120/60/20-day relative returns with liquidity
+    activity and OBV trend. This is a market-leadership proxy, not a historical
+    market-cap database.
+    """
+    out = day.copy()
+    out["dynamic_leader_score"] = 0.0
+    if out.empty:
+        return out
+
+    industry = out.get("industry", pd.Series("", index=out.index)).fillna("").astype(str)
+    for _, idx in out.groupby(industry, dropna=False).groups.items():
+        g = out.loc[idx]
+        cols = []
+        weights = []
+        for col, weight in [("ret_120", 0.35), ("ret_60", 0.30), ("ret_20", 0.20), ("volume_ratio", 0.15)]:
+            if col in g.columns:
+                vals = pd.to_numeric(g[col], errors="coerce")
+                if vals.notna().sum() >= 2:
+                    cols.append(vals.rank(pct=True))
+                    weights.append(weight)
+        if cols:
+            score = sum(s * w for s, w in zip(cols, weights)) / sum(weights)
+            if "obv_trend" in g.columns:
+                score = 0.90 * score + 0.10 * g["obv_trend"].astype(float)
+            out.loc[idx, "dynamic_leader_score"] = score.clip(0, 1)
+    return out
+
+
 def profile_priority(row: pd.Series) -> float:
     tier_score = TIER_PRIORITY.get(str(row.get("tier", "unknown")).lower(), 0.50)
     leader = float(row.get("leader_score", 0.0) or 0.0)
+    dynamic = float(row.get("dynamic_leader_score", 0.0) or 0.0)
     size = float(row.get("size_score", 0.0) or 0.0)
-    return max(0.0, min(1.0, 0.50 * tier_score + 0.30 * leader + 0.20 * size))
+    leader_blend = max(leader, 0.70 * dynamic + 0.30 * leader)
+    return max(0.0, min(1.0, 0.40 * tier_score + 0.40 * leader_blend + 0.20 * size))
 
 
 def is_tactical_tier(tier: str) -> bool:
@@ -175,6 +211,7 @@ def select_diversified_candidates(
     max_tactical_positions: int = 2,
     leader_priority_bonus: float = 0.0,
     priority_weight: float = 0.10,
+    min_defensive_positions: int = 0,
 ) -> pd.DataFrame:
     """Select across industries, preferring leaders before other core names.
 
@@ -210,6 +247,20 @@ def select_diversified_candidates(
 
     core = out[~out["tier"].isin(TACTICAL_TIERS)]
     tactical = out[out["tier"].isin(TACTICAL_TIERS)]
+
+    # Reserve part of the core book for defensive industries when strong
+    # candidates exist; never invent a defensive signal when the candidate fails
+    # the normal core eligibility filters.
+    if min_defensive_positions > 0:
+        defensive = core[core["industry"].isin(DEFENSIVE_INDUSTRIES)]
+        for _, row in defensive.iterrows():
+            if len(chosen) >= target_positions or sum(
+                str(x.get("industry", "")) in DEFENSIVE_INDUSTRIES for x in chosen
+            ) >= min_defensive_positions:
+                break
+            if can_take(row):
+                chosen.append(row.to_dict())
+                industry_counts[str(row["industry"])] = industry_counts.get(str(row["industry"]), 0) + 1
 
     # Distinct industries are covered by the strongest eligible core candidates.
     for _, row in core.iterrows():
