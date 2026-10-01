@@ -16,3 +16,4 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: pytest -q
       - run: python run_backtest.py --demo
+      - run: python scripts/run_huayou_test.py
