@@ -18,6 +18,8 @@ DEFAULT_GRID = {
     "technical_weight": [0.60, 0.65, 0.70],
     "event_weight": [0.15, 0.20, 0.25],
     "industry_weight": [0.10, 0.15, 0.20],
+    "minimum_entry_score": [0.50, 0.55, 0.60],
+    "reentry_cooldown_days": [10, 15, 20],
 }
 
 
@@ -51,7 +53,8 @@ def grid_train(
         grid["lookback_fast"], grid["lookback_slow"],
         grid["entry_rsi_low"], grid["entry_rsi_high"],
         grid["min_adx"], grid["trail_atr_multiple"],
-        grid["technical_weight"], grid["event_weight"], grid["industry_weight"]
+        grid["technical_weight"], grid["event_weight"], grid["industry_weight"],
+        grid["minimum_entry_score"], grid["reentry_cooldown_days"]
     ):
         if fast >= slow or rsi_low >= rsi_high or not weight_sum_ok(tw, ew, iw):
             continue
@@ -66,6 +69,8 @@ def grid_train(
             technical_weight=tw,
             event_weight=ew,
             industry_weight=iw,
+            minimum_entry_score=min_score,
+            reentry_cooldown_days=int(reentry_days),
         )
         equity, trades = Backtester(
             initial_cash=initial_cash,
@@ -85,6 +90,8 @@ def grid_train(
             "technical_weight": tw,
             "event_weight": ew,
             "industry_weight": iw,
+            "minimum_entry_score": min_score,
+            "reentry_cooldown_days": int(reentry_days),
             "trades": len(trades),
             **m,
         })
@@ -173,6 +180,8 @@ def walk_forward_train(
             "selected_technical_weight": cfg.technical_weight,
             "selected_event_weight": cfg.event_weight,
             "selected_industry_weight": cfg.industry_weight,
+            "selected_minimum_entry_score": cfg.minimum_entry_score,
+            "selected_reentry_cooldown_days": cfg.reentry_cooldown_days,
             "oos_trades": len(oos_trades),
             **{f"oos_{k}": v for k, v in oos.items()},
         })
