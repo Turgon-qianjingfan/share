@@ -28,29 +28,29 @@ class StrategyConfig:
     atr_window: int = 20
     rsi_window: int = 14
 
-    entry_rsi_low: float = 42
-    entry_rsi_high: float = 88
-    max_entry_annualized_vol: float = 0.80
-    min_20d_return: float = -0.05
-    min_adx: float = 15
+    entry_rsi_low: float = 45
+    entry_rsi_high: float = 85
+    max_entry_annualized_vol: float = 0.75
+    min_20d_return: float = -0.03
+    min_adx: float = 14
 
-    min_holding_days: int = 7
-    trend_break_confirm_days: int = 2
-    trail_atr_multiple: float = 3.4
+    min_holding_days: int = 8
+    trend_break_confirm_days: int = 3
+    trail_atr_multiple: float = 3.3
     hold_ma_buffer: float = 0.985
 
     tactical_minimum_entry_score: float = 0.50
-    tactical_min_5d_return: float = 0.02
-    tactical_min_volume_ratio: float = 1.10
-    tactical_min_relative_strength: float = -0.01
+    tactical_min_5d_return: float = 0.025
+    tactical_min_volume_ratio: float = 1.15
+    tactical_min_relative_strength: float = 0.0
     tactical_min_holding_days: int = 3
-    tactical_trail_atr_multiple: float = 2.8
+    tactical_trail_atr_multiple: float = 2.7
     max_tactical_positions: int = 2
     tactical_allocation_ratio: float = 0.20
 
     max_industry_positions: int = 2
     min_distinct_industries: int = 3
-    profile_priority_weight: float = 0.12
+    profile_priority_weight: float = 0.10
 
     rebalance_threshold: float = 0.025
     technical_weight: float = 0.65
@@ -83,11 +83,12 @@ def technical_score(row: pd.Series) -> float:
 def is_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
     required = [
         "ma_fast", "ma_slow", "atr", "rsi", "ret_5", "ret_20", "ret_60",
-        "vol_20", "adx", "volume_ratio", "relative_strength_20",
+        "vol_20", "adx", "volume_ratio", "relative_strength_20", "breakout_20",
     ]
     if any(pd.isna(row.get(k)) for k in required):
         return False
-    return bool(
+
+    trend_entry = bool(
         row["close"] > row["ma_slow"]
         and row["ma_fast"] > row["ma_slow"]
         and row["rsi"] >= cfg.entry_rsi_low
@@ -98,6 +99,24 @@ def is_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
         and row["adx"] >= cfg.min_adx
         and row["relative_strength_20"] > -0.05
     )
+
+    # Momentum-chase path: allow an earlier entry when a stock breaks a recent
+    # high with rising volume and clear relative strength. This is intentionally
+    # stricter on breakout quality than the normal trend path.
+    breakout_entry = bool(
+        row["close"] > row["ma_fast"]
+        and bool(row["breakout_20"])
+        and row["ret_5"] >= 0.02
+        and row["volume_ratio"] >= 1.25
+        and row["relative_strength_20"] >= 0.00
+        and row["rsi"] >= 55
+        and row["rsi"] <= 90
+        and row["vol_20"] > 0
+        and row["vol_20"] <= 0.85
+        and row["adx"] >= 12
+    )
+
+    return trend_entry or breakout_entry
 
 
 def is_tactical_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
