@@ -6,25 +6,34 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class RegimeConfig:
-    defensive_weight: float = 0.10
-    neutral_weight: float = 0.25
     risk_on_weight: float = 0.40
+    neutral_weight: float = 0.30
+    defensive_weight: float = 0.15
+    crisis_weight: float = 0.00
 
 
-def market_regime(row: pd.Series) -> tuple[str, float]:
-    """Map market trend, volatility and breadth proxy into a dynamic risk budget."""
+def market_regime(
+    benchmark_row: pd.Series,
+    breadth: float,
+    breadth_ma20: float | None = None,
+    cfg: RegimeConfig | None = None,
+) -> tuple[str, float]:
+    cfg = cfg or RegimeConfig()
     score = 0
-    if row["close"] > row["ma60"]:
+    if benchmark_row["close"] > benchmark_row["ma_slow"]:
         score += 1
-    if row["ma20"] > row["ma60"]:
+    if benchmark_row["ma_fast"] > benchmark_row["ma_slow"]:
         score += 1
-    if row.get("adx", 0) >= 20:
+    if breadth >= 0.55:
         score += 1
-    if row.get("relative_strength_20", 0) > 0:
+    if breadth_ma20 is not None and breadth >= breadth_ma20:
         score += 1
 
+    drawdown_60 = benchmark_row.get("drawdown_60", 0.0)
+    if drawdown_60 <= -0.15:
+        return "crisis", cfg.crisis_weight
     if score >= 3:
-        return "risk_on", 0.40
+        return "risk_on", cfg.risk_on_weight
     if score == 2:
-        return "neutral", 0.25
-    return "defensive", 0.10
+        return "neutral", cfg.neutral_weight
+    return "defensive", cfg.defensive_weight
