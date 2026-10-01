@@ -42,7 +42,7 @@ def validate_profiles(profiles: pd.DataFrame) -> pd.DataFrame:
     out["size_score"] = pd.to_numeric(out["size_score"], errors="coerce").fillna(0.0).clip(0, 1)
 
     if "effective_date" in out.columns:
-        out["effective_date"] = pd.to_datetime(out["effective_date"])
+        out["effective_date"] = pd.to_datetime(out["effective_date"], utc=True).dt.tz_localize(None)
         out = out.sort_values(["symbol", "effective_date"]).drop_duplicates(
             ["symbol", "effective_date"], keep="last"
         )
@@ -93,6 +93,8 @@ def profile_snapshot(profiles: pd.DataFrame, signal_date: pd.Timestamp) -> pd.Da
     if profiles.empty:
         return profiles
     dt = pd.Timestamp(signal_date)
+    if dt.tzinfo is not None:
+        dt = dt.tz_convert("UTC").tz_localize(None)
     usable = profiles[profiles["effective_date"] <= dt]
     if usable.empty:
         return profiles.iloc[0:0].copy()
