@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "share"
+version = "0.1.0"
+description = "Conservative A-share paper trading and backtesting research system"
+requires-python = ">=3.10"
+dependencies = ["pandas>=2.0,<3", "numpy>=1.24,<3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
