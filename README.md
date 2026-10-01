@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-> 数据状态（2026-10-01）：Longbridge 当前账户可取得近期日线，但历史 K 线接口返回 history-candlestick quota=0。因此五年数据集尚未生成；项目不会用模拟数据冒充五年历史。
+> 数据原则（2026-10-01）：研究窗口统一按“最近 1,000 个交易日”处理，而不是要求完整五年。Longbridge 当前账户可取得 1,000 根左右近期日线；历史 K 线接口若无法继续提供更早数据，项目会明确标记缺失，不会用模拟数据冒充历史。
 
 v0.1 是“可审计、低换手、先回测后模拟”的基线版本：
 
@@ -72,4 +72,32 @@ Recent single-stock regression tests on the latest available 1,000 daily bars:
 - 603799.SH: final equity about 200,391 yuan; maximum drawdown about -3.88%; about 20 trades.
 - 600988.SH: final equity about 205,626 yuan; maximum drawdown about -3.68%; about 22 trades.
 
-These tests are diagnostic only and do not replace the required five-year, full-universe, walk-forward validation.
+These tests are diagnostic only and do not replace the 1,000-trading-day full-universe walk-forward validation.
+
+
+## V3 research status
+
+V3 is currently a research candidate, not the production baseline.
+
+The 2026-10-01 preliminary test used 10 diversified A-shares, 1,000 daily bars per stock, and 510300.SH as a market-regime proxy. It also included a point-in-time event feed structure for company and industry news.
+
+Preliminary findings:
+- V3 increased the average realised equity exposure relative to V2, but exposure remained well below the 40% ceiling.
+- The sample still experienced material drawdown, so V3 is not yet accepted as a safer replacement for V2.
+- News/events are now first-class inputs rather than narrative annotations. Company events can affect rank and trigger risk exits; industry events affect the industry component of the score.
+- The current research stage uses the latest 1,000 trading days; point-in-time news and stock-profile coverage must still be validated for completeness.
+
+Promotion rule: V3 should only replace the main strategy after multi-year walk-forward validation, stress testing, and comparison against V2 on the same data.
+
+
+## Strategy V3.2 universe selection
+
+股票池现在不再只是“技术指标排名”，而是显式加入行业与公司层级：
+
+- 行业约束：默认最多 2 只来自同一行业，并优先覆盖至少 3 个不同的可选行业。
+- 核心仓：leader / large / mid 作为核心候选，优先考虑公司规模与行业地位，再比较技术面和公司/行业事件。
+- 战术仓：small / micro 单独作为小盘短线动量仓，默认只占风险预算的一小部分，单票上限 4%，必须同时满足突破或短期涨幅、放量和相对强势条件。
+- 公司层级通过 data/stock_profiles_template.csv 提供；effective_date 用于保证回测按当时已知的信息选股，避免用今天的标签倒灌到过去。
+- 没有画像数据时，代码仍可运行，但不会假装知道某只股票属于龙头、大盘还是小盘。
+
+研究窗口由 universe.lookback_trading_days=1000 与 research.lookback_trading_days=1000 控制。

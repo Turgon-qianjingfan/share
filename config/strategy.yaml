@@ -2,33 +2,80 @@ initial_cash: 200000
 
 capital_preservation:
   enabled: true
-  max_equity_weight: 0.40
+  max_equity_weight: 0.50
   min_cash_weight: 0.60
-  warning_drawdown_limit: 0.05
-  hard_drawdown_limit: 0.08
+  warning_drawdown_limit: 0.08
+  hard_drawdown_limit: 0.10
+  principal_guard_weight: 0.25
   cooldown_days: 10
-  principal_guard_weight: 0.20
 
-max_single_weight: 0.08
-target_positions: 5
+universe:
+  lookback_trading_days: 1000
+  target_positions: 6
+  max_single_weight: 0.10
+  max_tactical_weight: 0.04
+  max_industry_positions: 2
+  min_distinct_industries: 4
+  max_tactical_positions: 1
+  min_defensive_positions: 2
+  tactical_allocation_ratio: 0.10
+  risk_budget_tolerance: 0.03
+  profile_priority_weight: 0.20
+  leader_priority_bonus: 0.05
+  tier_policy:
+    leader: core
+    large: core
+    mid: core
+    small: tactical
+    micro: tactical
+    unknown: neutral
 
-lookback_fast: 20
-lookback_slow: 60
-atr_window: 20
-rsi_window: 14
-min_history: 80
-
-entry:
-  rsi_low: 45
-  rsi_high: 72
-  max_annualized_vol: 0.60
+technical:
+  lookback_fast: 20
+  lookback_slow: 60
+  atr_window: 20
+  rsi_window: 14
+  min_adx: 16
+  max_entry_annualized_vol: 0.60
   min_20d_return: 0.00
-
-holding:
+  min_relative_strength: 0.00
+  hold_ma_buffer: 0.985
   min_holding_days: 10
   trend_break_confirm_days: 3
   trail_atr_multiple: 3.0
-  hold_ma_buffer: 0.985
+  minimum_entry_score: 0.57
+  rebalance_threshold: 0.025
+
+tactical:
+  minimum_entry_score: 0.70
+  min_5d_return: 0.06
+  min_volume_ratio: 1.30
+  min_relative_strength: 0.03
+  min_money_flow_proxy: 0.10
+  min_company_score: 0.05
+  min_industry_score: -0.05
+  min_limit_up_streak: 2
+  min_holding_days: 3
+  trail_atr_multiple: 2.5
+  reentry_cooldown_days: 10
+  severe_event_reentry_days: 60
+
+weights:
+  technical: 0.65
+  company_event: 0.20
+  industry_event: 0.15
+
+events:
+  company_half_life_days: 10
+  industry_half_life_days: 15
+  max_lookback_days: 30
+  severe_negative_score: -0.75
+
+regime:
+  risk_on_weight: 0.45
+  neutral_weight: 0.30
+  defensive_weight: 0.15
+  crisis_weight: 0.00
 
 execution:
   commission_rate: 0.0003
@@ -36,12 +83,8 @@ execution:
   slippage_rate: 0.0005
   lot_size: 100
 
-trading:
-  rebalance_threshold: 0.025
-
 research:
-  history_start: "2021-10-01"
-  history_end: "2026-10-01"
+  lookback_trading_days: 1000
   validation_method: "walk_forward"
   train_days: 504
   test_days: 126

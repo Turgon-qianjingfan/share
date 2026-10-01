@@ -15,4 +15,7 @@ jobs:
           python-version: "3.11"
       - run: pip install -e ".[dev]"
       - run: pytest -q
+      - run: python scripts/run_v3_demo.py
+      - run: python scripts/run_v3_2_lb_regression.py
+      - run: python scripts/run_v3_3_lb_expanded_regression.py
       - run: python run_backtest.py --demo
