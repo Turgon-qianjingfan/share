@@ -96,6 +96,7 @@ class Backtester:
         stable_regime = "neutral"
 
         for i, date in enumerate(dates[:-1]):
+            sold_today: set[str] = set()
             today = data[data["date"] == date]
             next_day = data[data["date"] == dates[i + 1]]
             prices_close = dict(zip(today["symbol"], today["close"]))
@@ -188,10 +189,11 @@ class Backtester:
                     cfg=self.strategy_cfg,
                 )
                 if exit_now or cooldown > 0:
-                    sim.sell(
+                    if sim.sell(
                         dates[i + 1], symbol, float(px_series.iloc[0]), pos.quantity,
                         reason or "risk_off",
-                    )
+                    ):
+                        sold_today.add(symbol)
 
             next_prices = dict(zip(next_day["symbol"], next_day["open"]))
             equity_open = portfolio.cash + sum(
@@ -211,10 +213,11 @@ class Backtester:
                     ) * self.execution_cfg.lot_size
                     sell_qty = max(0, pos.quantity - keep_qty)
                     if sell_qty > 0:
-                        sim.sell(
+                        if sim.sell(
                             dates[i + 1], symbol, px, sell_qty,
                             "dynamic_total_risk_budget",
-                        )
+                        ):
+                            sold_today.add(symbol)
 
             equity_open = portfolio.cash + sum(
                 p.quantity * next_prices.get(s, 0.0)
@@ -223,7 +226,7 @@ class Backtester:
             targets = target_weights(entries, risk_budget, self.strategy_cfg.max_single_weight)
             for symbol, target_weight in targets.items():
                 # No daily top-up. Only open a genuinely new position.
-                if symbol in portfolio.positions:
+                if symbol in portfolio.positions or symbol in sold_today:
                     continue
                 row_df = today[today["symbol"] == symbol]
                 px = next_prices.get(symbol)
