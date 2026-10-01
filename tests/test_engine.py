@@ -85,3 +85,11 @@ def test_industry_event_does_not_become_company_event():
                             signal_date=pd.Timestamp("2026-01-02"))
     assert out["company_score"] == 0
     assert out["industry_score"] > 0
+
+
+def test_empty_candidate_rank_is_safe():
+    import pandas as pd
+    from share.strategy import rank_candidates, StrategyConfig
+    out=rank_candidates(pd.DataFrame(columns=["symbol"]), {}, StrategyConfig())
+    assert out.empty
+    assert "composite_score" in out.columns
