@@ -96,7 +96,9 @@ def rank_candidates(day: pd.DataFrame, event_scores: dict[str, dict], cfg: Strat
         composite = cfg.technical_weight * ts + cfg.event_weight * ((cs + 1) / 2) + cfg.industry_weight * ((ins + 1) / 2)
         rows.append({"symbol": symbol, "technical_score": ts, "company_score": cs,
                      "industry_score": ins, "composite_score": composite})
-    return pd.DataFrame(rows).sort_values("composite_score", ascending=False)
+    if not rows:
+        return pd.DataFrame(columns=["symbol", "technical_score", "company_score", "industry_score", "composite_score"])
+    return pd.DataFrame(rows).sort_values("composite_score", ascending=False).reset_index(drop=True)
 
 
 def target_weights(candidates: list[str], equity_weight: float, max_single_weight: float) -> dict[str, float]:
