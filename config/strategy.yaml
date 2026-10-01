@@ -2,23 +2,24 @@ initial_cash: 200000
 
 capital_preservation:
   enabled: true
-  max_equity_weight: 0.50
-  min_cash_weight: 0.50
-  warning_drawdown_limit: 0.07
+  max_equity_weight: 0.40
+  min_cash_weight: 0.60
+  warning_drawdown_limit: 0.06
   hard_drawdown_limit: 0.08
-  principal_guard_weight: 0.30
+  principal_guard_weight: 0.25
   cooldown_days: 10
 
 universe:
   lookback_trading_days: 1000
   target_positions: 5
   max_single_weight: 0.10
-  max_tactical_weight: 0.05
+  max_tactical_weight: 0.04
   max_industry_positions: 2
   min_distinct_industries: 3
-  max_tactical_positions: 2
-  tactical_allocation_ratio: 0.20
-  profile_priority_weight: 0.10
+  max_tactical_positions: 1
+  tactical_allocation_ratio: 0.10
+  profile_priority_weight: 0.20
+  leader_priority_bonus: 0.05
   tier_policy:
     leader: core
     large: core
@@ -32,23 +33,24 @@ technical:
   lookback_slow: 60
   atr_window: 20
   rsi_window: 14
-  min_adx: 15
-  max_entry_annualized_vol: 0.65
-  min_20d_return: -0.02
+  min_adx: 16
+  max_entry_annualized_vol: 0.60
+  min_20d_return: 0.00
+  min_relative_strength: 0.00
   hold_ma_buffer: 0.985
   min_holding_days: 10
   trend_break_confirm_days: 3
-  trail_atr_multiple: 3.2
-  minimum_entry_score: 0.50
+  trail_atr_multiple: 3.0
+  minimum_entry_score: 0.60
   rebalance_threshold: 0.025
 
 tactical:
-  minimum_entry_score: 0.62
-  min_5d_return: 0.02
-  min_volume_ratio: 1.10
-  min_relative_strength: -0.01
+  minimum_entry_score: 0.74
+  min_5d_return: 0.04
+  min_volume_ratio: 1.40
+  min_relative_strength: 0.02
   min_holding_days: 3
-  trail_atr_multiple: 2.8
+  trail_atr_multiple: 2.5
   reentry_cooldown_days: 10
   severe_event_reentry_days: 60
 
@@ -64,9 +66,9 @@ events:
   severe_negative_score: -0.75
 
 regime:
-  risk_on_weight: 0.55
-  neutral_weight: 0.40
-  defensive_weight: 0.25
+  risk_on_weight: 0.45
+  neutral_weight: 0.30
+  defensive_weight: 0.15
   crisis_weight: 0.00
 
 execution:
