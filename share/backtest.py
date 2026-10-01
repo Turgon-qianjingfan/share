@@ -164,10 +164,12 @@ class Backtester:
                 for symbol, pos in list(portfolio.positions.items()):
                     px = next_day.loc[next_day["symbol"] == symbol, "open"]
                     if not px.empty:
-                        sim.sell(
+                        if sim.sell(
                             dates[i + 1], symbol, float(px.iloc[0]), pos.quantity,
                             "hard_drawdown_circuit_breaker",
-                        )
+                        ):
+                            last_exit_date[symbol] = pd.Timestamp(dates[i + 1])
+                            held_mode.pop(symbol, None)
                 cooldown = self.cooldown_days
 
             risk_budget = min(
@@ -232,7 +234,7 @@ class Backtester:
                 pos.highest_close = max(pos.highest_close, float(row["close"]))
 
                 e = event_scores.get(symbol, {})
-                tier = tier_by_symbol.get(symbol, "unknown")
+                tier = held_mode.get(symbol, tier_by_symbol.get(symbol, "unknown"))
                 exit_now, reason = should_exit(
                     row,
                     highest_close=pos.highest_close,
