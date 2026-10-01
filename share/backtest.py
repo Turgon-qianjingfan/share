@@ -94,6 +94,8 @@ class Backtester:
         regime_candidate = None
         regime_streak = 0
         stable_regime = "neutral"
+        last_exit_date: dict[str, pd.Timestamp] = {}
+        severe_event_exit_date: dict[str, pd.Timestamp] = {}
 
         for i, date in enumerate(dates[:-1]):
             sold_today: set[str] = set()
@@ -163,6 +165,8 @@ class Backtester:
             }
 
             ranked = rank_candidates(today, event_scores, self.strategy_cfg)
+            if not ranked.empty:
+                ranked = ranked[ranked["composite_score"] >= self.strategy_cfg.minimum_entry_score]
             entries = ranked["symbol"].tolist()[: self.strategy_cfg.target_positions] if not ranked.empty else []
 
             for symbol, pos in list(portfolio.positions.items()):
@@ -194,6 +198,10 @@ class Backtester:
                         reason or "risk_off",
                     ):
                         sold_today.add(symbol)
+                        if symbol not in portfolio.positions:
+                            last_exit_date[symbol] = pd.Timestamp(dates[i + 1])
+                            if reason == "severe_negative_company_event":
+                                severe_event_exit_date[symbol] = pd.Timestamp(dates[i + 1])
 
             next_prices = dict(zip(next_day["symbol"], next_day["open"]))
             equity_open = portfolio.cash + sum(
@@ -227,6 +235,13 @@ class Backtester:
             for symbol, target_weight in targets.items():
                 # No daily top-up. Only open a genuinely new position.
                 if symbol in portfolio.positions or symbol in sold_today:
+                    continue
+                signal_date = pd.Timestamp(dates[i + 1])
+                exited = last_exit_date.get(symbol)
+                severe_exited = severe_event_exit_date.get(symbol)
+                if exited is not None and (signal_date - exited).days < self.strategy_cfg.reentry_cooldown_days:
+                    continue
+                if severe_exited is not None and (signal_date - severe_exited).days < self.strategy_cfg.severe_event_reentry_days:
                     continue
                 row_df = today[today["symbol"] == symbol]
                 px = next_prices.get(symbol)
