@@ -94,6 +94,14 @@ def add_indicators(
             .groupby((~g["limit_up_like"]).cumsum())
             .cumsum()
         )
+        g["limit_up_count_3"] = g["limit_up_like"].rolling(3).sum()
+        # Historical Longbridge daily capital-flow is not available for the full
+        # 1,000-day sample, so backtests use this explicit OBV/volume pressure proxy.
+        g["money_flow_5"] = (
+            (np.sign(g["daily_ret"]).fillna(0) * g["volume"])
+            .rolling(5).sum()
+            / g["volume"].rolling(5).sum().replace(0, np.nan)
+        )
         g["vol_20"] = g["daily_ret"].rolling(20).std() * np.sqrt(252)
         g["ret_5"] = c.pct_change(5)
         g["ret_20"] = c.pct_change(20)
