@@ -177,6 +177,7 @@ def walk_forward_train(
             benchmark=test_benchmark,
             events=test_events,
             industry_map=industry_map,
+            stock_profiles=stock_profiles,
         )
         oos = summarize(oos_equity, initial_cash)
 
