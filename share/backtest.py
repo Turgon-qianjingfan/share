@@ -34,6 +34,18 @@ class Backtester:
         self.principal_guard_weight = principal_guard_weight
         self.cooldown_days = cooldown_days
 
+    @staticmethod
+    def _market_regime_state(regime_candidate, regime_streak, stable_regime, raw_regime):
+        if raw_regime == "crisis":
+            return raw_regime, 3, raw_regime
+        if raw_regime == regime_candidate:
+            regime_streak += 1
+        else:
+            regime_candidate, regime_streak = raw_regime, 1
+        if regime_streak >= 3:
+            stable_regime = regime_candidate
+        return regime_candidate, regime_streak, stable_regime
+
     def run(
         self,
         data: pd.DataFrame,
@@ -49,7 +61,6 @@ class Backtester:
         )
 
         if benchmark is None:
-            # No benchmark means regime is neutral-by-construction.
             benchmark = data.groupby("date", as_index=False).agg(
                 open=("open", "mean"),
                 high=("high", "mean"),
@@ -65,25 +76,24 @@ class Backtester:
             atr_window=self.strategy_cfg.atr_window,
         )
         data = add_relative_strength(data, benchmark)
-
         events = validate_events(events) if events is not None and not events.empty else pd.DataFrame()
         industry_map = industry_map or {}
 
         portfolio = Portfolio(self.initial_cash)
         sim = Simulator(portfolio, self.execution_cfg)
-
         dates = sorted(data["date"].unique())
         benchmark_by_date = {
-            row["date"]: row
-            for _, row in benchmark.iterrows()
+            row["date"]: row for _, row in benchmark.iterrows()
             if row["date"] in dates
         }
 
-        breadth_values: dict[pd.Timestamp, float] = {}
         breadth_history: list[float] = []
         rows = []
         peak_equity = self.initial_cash
         cooldown = 0
+        regime_candidate = None
+        regime_streak = 0
+        stable_regime = "neutral"
 
         for i, date in enumerate(dates[:-1]):
             today = data[data["date"] == date]
@@ -94,29 +104,35 @@ class Backtester:
             equity = portfolio.equity(prices_close)
             peak_equity = max(peak_equity, equity)
             drawdown = equity / peak_equity - 1
-
-            if cooldown > 0:
-                cooldown -= 1
+            cooldown = max(0, cooldown - 1)
 
             valid_breadth = today.dropna(subset=["ma_slow"])
             breadth = (
                 float((valid_breadth["close"] > valid_breadth["ma_slow"]).mean())
                 if not valid_breadth.empty else 0.5
             )
-            breadth_values[date] = breadth
             breadth_history.append(breadth)
             breadth_ma20 = sum(breadth_history[-20:]) / min(len(breadth_history), 20)
 
             bm = benchmark_by_date.get(date)
             if bm is None or pd.isna(bm.get("ma_slow")):
-                regime_name, regime_weight = "neutral", self.regime_cfg.neutral_weight
+                raw_regime = "neutral"
             else:
-                regime_name, regime_weight = market_regime(
+                raw_regime, _ = market_regime(
                     pd.Series(bm),
                     breadth=breadth,
                     breadth_ma20=breadth_ma20,
                     cfg=self.regime_cfg,
                 )
+            regime_candidate, regime_streak, stable_regime = self._market_regime_state(
+                regime_candidate, regime_streak, stable_regime, raw_regime
+            )
+            regime_weight = {
+                "risk_on": self.regime_cfg.risk_on_weight,
+                "neutral": self.regime_cfg.neutral_weight,
+                "defensive": self.regime_cfg.defensive_weight,
+                "crisis": self.regime_cfg.crisis_weight,
+            }[stable_regime]
 
             if drawdown <= -self.hard_drawdown_limit:
                 for symbol, pos in list(portfolio.positions.items()):
@@ -128,68 +144,52 @@ class Backtester:
                         )
                 cooldown = self.cooldown_days
 
-            # At a warning drawdown, stay defensive but do not liquidate blindly.
             risk_budget = min(regime_weight, 0.10) if drawdown <= -self.warning_drawdown_limit else regime_weight
             if equity < self.initial_cash:
                 risk_budget = min(risk_budget, self.principal_guard_weight)
-            if cooldown > 0 or regime_name == "crisis":
+            if cooldown > 0 or stable_regime == "crisis":
                 risk_budget = 0.0
 
-            event_scores = {}
-            for symbol in today["symbol"].unique():
-                event_scores[symbol] = event_score_for_day(
+            event_scores = {
+                symbol: event_score_for_day(
                     events,
                     symbol=symbol,
                     industry=industry_map.get(symbol, ""),
                     signal_date=pd.Timestamp(date),
                     cfg=self.event_cfg,
                 )
+                for symbol in today["symbol"].unique()
+            }
 
-            candidate_rows = today.copy()
-            ranked = rank_candidates(candidate_rows, event_scores, self.strategy_cfg)
-            ranked_symbols = ranked["symbol"].tolist() if not ranked.empty else []
-            entries = ranked_symbols[: self.strategy_cfg.target_positions]
+            ranked = rank_candidates(today, event_scores, self.strategy_cfg)
+            entries = ranked["symbol"].tolist()[: self.strategy_cfg.target_positions] if not ranked.empty else []
 
-            # Exit decisions use company event risk + technical risk.
             for symbol, pos in list(portfolio.positions.items()):
-                current_row = today[today["symbol"] == symbol]
-                px = next_day.loc[next_day["symbol"] == symbol, "open"]
-                if current_row.empty or px.empty:
+                row_df = today[today["symbol"] == symbol]
+                px_series = next_day.loc[next_day["symbol"] == symbol, "open"]
+                if row_df.empty or px_series.empty:
                     continue
 
-                row = current_row.iloc[0]
+                row = row_df.iloc[0]
                 if row["close"] < row["ma_slow"] * self.strategy_cfg.hold_ma_buffer and row["ma_fast"] < row["ma_slow"]:
                     pos.below_ma60_streak += 1
                 else:
                     pos.below_ma60_streak = 0
                 pos.highest_close = max(pos.highest_close, float(row["close"]))
 
-                score = event_scores.get(symbol, {})
+                e = event_scores.get(symbol, {})
                 exit_now, reason = should_exit(
                     row,
                     highest_close=pos.highest_close,
                     days_held=pos.days_held,
                     below_ma60_streak=pos.below_ma60_streak,
-                    company_score=score.get("company_score", 0.0),
-                    severe_negative_event=score.get("severe_negative", False),
+                    company_score=e.get("company_score", 0.0),
+                    severe_negative_event=e.get("severe_negative", False),
                     cfg=self.strategy_cfg,
                 )
-
-                # Risk budget contraction only sells if actual portfolio weight
-                # is above the new risk budget.
-                current_value = pos.quantity * float(px.iloc[0])
-                current_weight = current_value / max(
-                    portfolio.equity({s: float(next_day[next_day["symbol"] == s]["close"].iloc[0]) for s in portfolio.positions if s in set(next_day["symbol"])}),
-                    1.0,
-                )
-                budget_exit = current_weight > 0 and current_weight > risk_budget
-                if budget_exit and not exit_now and not cooldown:
-                    exit_now = True
-                    reason = "dynamic_risk_budget"
-
                 if exit_now or cooldown > 0:
                     sim.sell(
-                        dates[i + 1], symbol, float(px.iloc[0]), pos.quantity,
+                        dates[i + 1], symbol, float(px_series.iloc[0]), pos.quantity,
                         reason or "risk_off",
                     )
 
@@ -200,59 +200,43 @@ class Backtester:
             )
             current_total_weight = portfolio.market_value(next_prices) / max(equity_open, 1.0)
 
-            # Enforce the dynamic TOTAL portfolio risk budget. Reduce existing
-            # positions proportionally before considering new entries.
             if current_total_weight > risk_budget:
-                reduction_ratio = 1.0 if risk_budget <= 0 else risk_budget / current_total_weight
+                reduction_ratio = 0.0 if risk_budget <= 0 else risk_budget / current_total_weight
                 for symbol, pos in list(portfolio.positions.items()):
                     px = next_prices.get(symbol)
                     if px is None:
                         continue
-                    keep_qty = int((pos.quantity * reduction_ratio) // self.execution_cfg.lot_size) * self.execution_cfg.lot_size
+                    keep_qty = int(
+                        (pos.quantity * reduction_ratio) / self.execution_cfg.lot_size
+                    ) * self.execution_cfg.lot_size
                     sell_qty = max(0, pos.quantity - keep_qty)
                     if sell_qty > 0:
                         sim.sell(
                             dates[i + 1], symbol, px, sell_qty,
                             "dynamic_total_risk_budget",
                         )
-                equity_open = portfolio.cash + sum(
-                    p.quantity * next_prices.get(s, 0.0)
-                    for s, p in portfolio.positions.items()
-                )
-                current_total_weight = portfolio.market_value(next_prices) / max(equity_open, 1.0)
 
+            equity_open = portfolio.cash + sum(
+                p.quantity * next_prices.get(s, 0.0)
+                for s, p in portfolio.positions.items()
+            )
             targets = target_weights(entries, risk_budget, self.strategy_cfg.max_single_weight)
             for symbol, target_weight in targets.items():
-                if not is_entry_eligible(
-                    today[today["symbol"] == symbol].iloc[0],
-                    self.strategy_cfg,
-                ):
+                # No daily top-up. Only open a genuinely new position.
+                if symbol in portfolio.positions:
                     continue
+                row_df = today[today["symbol"] == symbol]
                 px = next_prices.get(symbol)
-                if px is None or px <= 0:
+                if row_df.empty or px is None or px <= 0:
                     continue
-
-                current_value = (
-                    portfolio.positions[symbol].quantity * px
-                    if symbol in portfolio.positions else 0.0
-                )
-                current_weight = current_value / max(equity_open, 1.0)
-                if target_weight - current_weight < self.strategy_cfg.rebalance_threshold:
+                if not is_entry_eligible(row_df.iloc[0], self.strategy_cfg):
                     continue
 
                 desired_value = equity_open * target_weight
-                amount = max(0.0, desired_value - current_value)
-                buy_qty = int(amount / px)
+                buy_qty = int(desired_value / px)
                 if buy_qty <= 0:
                     continue
-
-                before_qty = portfolio.positions[symbol].quantity if symbol in portfolio.positions else 0
-                if sim.buy(dates[i + 1], symbol, px, buy_qty, "v3_multi_signal_entry"):
-                    after = portfolio.positions.get(symbol)
-                    if after is not None:
-                        if before_qty == 0:
-                            after.entry_date = str(dates[i + 1])
-                            after.highest_close = px
+                sim.buy(dates[i + 1], symbol, px, buy_qty, "v3_new_position_entry")
 
             prices = dict(zip(next_day["symbol"], next_day["close"]))
             end_equity = portfolio.equity(prices)
@@ -264,7 +248,7 @@ class Backtester:
                 "positions": len(portfolio.positions),
                 "drawdown": end_equity / peak_equity - 1,
                 "risk_budget": risk_budget,
-                "market_regime": regime_name,
+                "market_regime": stable_regime,
                 "breadth": breadth,
                 "event_count": int(sum(v.get("event_count", 0) for v in event_scores.values())),
             })
