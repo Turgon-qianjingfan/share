@@ -55,6 +55,7 @@ def load_expanded():
     # Those rows are not historical market data and must not enter the backtest.
     raw = raw[(raw[["open", "high", "low", "close"]] > 0).all(axis=1)].copy()
     raw = raw.drop_duplicates(["date", "symbol"], keep="first")
+    raw["date"] = pd.to_datetime(raw["date"], utc=True).dt.tz_localize(None)
     raw["industry"] = raw["symbol"].map(INDUSTRY).fillna("其他")
     benchmark = raw[raw["symbol"] == BENCHMARK].copy()
     data = raw[raw["symbol"] != BENCHMARK].copy()
