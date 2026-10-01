@@ -8,6 +8,7 @@ TIER_PRIORITY = {
     "mid": 0.60,
     "small": 0.30,
     "micro": 0.15,
+    "tactical": 0.30,
     "unknown": 0.50,
 }
 
