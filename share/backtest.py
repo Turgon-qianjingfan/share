@@ -4,11 +4,13 @@ import pandas as pd
 
 from .data import load_csv
 from .indicators import add_indicators, add_relative_strength
-from .strategy import StrategyConfig, is_entry_eligible, rank_candidates, should_exit, target_weights
+from .strategy import StrategyConfig, is_entry_eligible, rank_candidates, select_entries, should_exit, target_weights
 from .portfolio import Portfolio
 from .execution import ExecutionConfig, Simulator
 from .events import EventConfig, event_score_for_day, validate_events
 from .regime import RegimeConfig, market_regime
+from .data import limit_to_trading_days
+from .universe import attach_profiles, is_tactical_tier
 
 
 class Backtester:
@@ -52,7 +54,12 @@ class Backtester:
         benchmark: pd.DataFrame | None = None,
         events: pd.DataFrame | None = None,
         industry_map: dict[str, str] | None = None,
+        stock_profiles: pd.DataFrame | None = None,
     ):
+        data = limit_to_trading_days(data, self.strategy_cfg.lookback_trading_days)
+        if benchmark is not None:
+            benchmark = limit_to_trading_days(benchmark, self.strategy_cfg.lookback_trading_days)
+
         data = add_indicators(
             data,
             fast=self.strategy_cfg.lookback_fast,
@@ -78,6 +85,12 @@ class Backtester:
         data = add_relative_strength(data, benchmark)
         events = validate_events(events) if events is not None and not events.empty else pd.DataFrame()
         industry_map = industry_map or {}
+        if stock_profiles is not None and not stock_profiles.empty:
+            profiled = attach_profiles(data, stock_profiles, pd.Timestamp(data["date"].max()))
+            profile_industry_map = dict(zip(profiled["symbol"], profiled["industry"]))
+            for symbol, industry in profile_industry_map.items():
+                if industry:
+                    industry_map.setdefault(symbol, industry)
 
         portfolio = Portfolio(self.initial_cash)
         sim = Simulator(portfolio, self.execution_cfg)
@@ -153,21 +166,31 @@ class Backtester:
             if cooldown > 0 or stable_regime == "crisis":
                 risk_budget = 0.0
 
+            profiled_today = attach_profiles(today, stock_profiles, pd.Timestamp(date))
+            industry_by_symbol = dict(zip(profiled_today["symbol"], profiled_today["industry"]))
+            tier_by_symbol = dict(zip(profiled_today["symbol"], profiled_today["tier"]))
             event_scores = {
                 symbol: event_score_for_day(
                     events,
                     symbol=symbol,
-                    industry=industry_map.get(symbol, ""),
+                    industry=industry_by_symbol.get(symbol) or industry_map.get(symbol, ""),
                     signal_date=pd.Timestamp(date),
                     cfg=self.event_cfg,
                 )
                 for symbol in today["symbol"].unique()
             }
 
-            ranked = rank_candidates(today, event_scores, self.strategy_cfg)
-            if not ranked.empty:
-                ranked = ranked[ranked["composite_score"] >= self.strategy_cfg.minimum_entry_score]
-            entries = ranked["symbol"].tolist()[: self.strategy_cfg.target_positions] if not ranked.empty else []
+            ranked = rank_candidates(
+                today,
+                event_scores,
+                self.strategy_cfg,
+                stock_profiles=stock_profiles,
+                signal_date=pd.Timestamp(date),
+            )
+            entries_df = select_entries(ranked, self.strategy_cfg)
+            entries = entries_df["symbol"].tolist() if not entries_df.empty else []
+            for _, selected in entries_df.iterrows() if not entries_df.empty else []:
+                tier_by_symbol[selected["symbol"]] = selected.get("tier", "unknown")
 
             for symbol, pos in list(portfolio.positions.items()):
                 row_df = today[today["symbol"] == symbol]
@@ -183,6 +206,7 @@ class Backtester:
                 pos.highest_close = max(pos.highest_close, float(row["close"]))
 
                 e = event_scores.get(symbol, {})
+                tier = tier_by_symbol.get(symbol, "unknown")
                 exit_now, reason = should_exit(
                     row,
                     highest_close=pos.highest_close,
@@ -191,6 +215,8 @@ class Backtester:
                     company_score=e.get("company_score", 0.0),
                     severe_negative_event=e.get("severe_negative", False),
                     cfg=self.strategy_cfg,
+                    min_holding_days=(self.strategy_cfg.tactical_min_holding_days if is_tactical_tier(tier) else self.strategy_cfg.min_holding_days),
+                    trail_atr_multiple=(self.strategy_cfg.tactical_trail_atr_multiple if is_tactical_tier(tier) else self.strategy_cfg.trail_atr_multiple),
                 )
                 if exit_now or cooldown > 0:
                     if sim.sell(
@@ -231,7 +257,14 @@ class Backtester:
                 p.quantity * next_prices.get(s, 0.0)
                 for s, p in portfolio.positions.items()
             )
-            targets = target_weights(entries, risk_budget, self.strategy_cfg.max_single_weight)
+            targets = target_weights(
+                entries,
+                risk_budget,
+                self.strategy_cfg.max_single_weight,
+                stock_tiers=tier_by_symbol,
+                tactical_allocation_ratio=self.strategy_cfg.tactical_allocation_ratio,
+                max_tactical_weight=self.strategy_cfg.max_tactical_weight,
+            )
             for symbol, target_weight in targets.items():
                 # No daily top-up. Only open a genuinely new position.
                 if symbol in portfolio.positions or symbol in sold_today:
@@ -274,7 +307,7 @@ class Backtester:
         return pd.DataFrame(rows), pd.DataFrame(sim.trades)
 
 
-def run_csv(path, initial_cash=200_000, benchmark_path=None, events_path=None, industry_map_path=None):
+def run_csv(path, initial_cash=200_000, benchmark_path=None, events_path=None, industry_map_path=None, stock_profiles_path=None):
     data = load_csv(path)
     benchmark = load_csv(benchmark_path) if benchmark_path else None
     events = pd.read_csv(events_path) if events_path else None
@@ -282,9 +315,11 @@ def run_csv(path, initial_cash=200_000, benchmark_path=None, events_path=None, i
     if industry_map_path:
         mapping = pd.read_csv(industry_map_path)
         industry_map = dict(zip(mapping["symbol"], mapping["industry"]))
+    stock_profiles = pd.read_csv(stock_profiles_path) if stock_profiles_path else None
     return Backtester(initial_cash=initial_cash).run(
         data,
         benchmark=benchmark,
         events=events,
         industry_map=industry_map,
+        stock_profiles=stock_profiles,
     )
