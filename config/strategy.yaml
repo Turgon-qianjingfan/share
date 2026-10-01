@@ -4,9 +4,9 @@ capital_preservation:
   enabled: true
   max_equity_weight: 0.50
   min_cash_weight: 0.50
-  warning_drawdown_limit: 0.06
+  warning_drawdown_limit: 0.07
   hard_drawdown_limit: 0.08
-  principal_guard_weight: 0.25
+  principal_guard_weight: 0.30
   cooldown_days: 10
 
 universe:
@@ -49,7 +49,7 @@ tactical:
   min_relative_strength: -0.01
   min_holding_days: 3
   trail_atr_multiple: 2.8
-  reentry_cooldown_days: 7
+  reentry_cooldown_days: 10
   severe_event_reentry_days: 60
 
 weights:
@@ -64,9 +64,9 @@ events:
   severe_negative_score: -0.75
 
 regime:
-  risk_on_weight: 0.50
-  neutral_weight: 0.35
-  defensive_weight: 0.20
+  risk_on_weight: 0.55
+  neutral_weight: 0.40
+  defensive_weight: 0.25
   crisis_weight: 0.00
 
 execution:
