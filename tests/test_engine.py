@@ -44,3 +44,44 @@ def test_walk_forward_has_purge():
     assert splits
     for train, test in splits:
         assert train[-1] < test[0]
+
+
+def test_event_signal_is_point_in_time():
+    import pandas as pd
+    from share.events import event_score_for_day, validate_events
+
+    events=validate_events(pd.DataFrame([{
+        "event_time":"2026-01-01T00:00:00Z",
+        "symbol":"603799.SH",
+        "direction":-1,
+        "severity":3,
+        "event_type":"earnings",
+        "industry":"有色",
+        "source_quality":1.0,
+        "title":"negative event",
+    }]))
+    before=event_score_for_day(events, symbol="603799.SH", industry="有色",
+                               signal_date=pd.Timestamp("2025-12-31"),)
+    after=event_score_for_day(events, symbol="603799.SH", industry="有色",
+                              signal_date=pd.Timestamp("2026-01-02"),)
+    assert before["company_score"] == 0
+    assert after["company_score"] < 0
+
+def test_industry_event_does_not_become_company_event():
+    import pandas as pd
+    from share.events import event_score_for_day, validate_events
+
+    events=validate_events(pd.DataFrame([{
+        "event_time":"2026-01-01T00:00:00Z",
+        "symbol":"",
+        "direction":1,
+        "severity":2,
+        "event_type":"industry",
+        "industry":"黄金",
+        "source_quality":1.0,
+        "title":"gold industry event",
+    }]))
+    out=event_score_for_day(events, symbol="600988.SH", industry="黄金",
+                            signal_date=pd.Timestamp("2026-01-02"))
+    assert out["company_score"] == 0
+    assert out["industry_score"] > 0
