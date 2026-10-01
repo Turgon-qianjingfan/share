@@ -52,7 +52,6 @@ def validate_profiles(profiles: pd.DataFrame) -> pd.DataFrame:
     return out.reset_index(drop=True)
 
 
-
 def infer_profile_scores(day: pd.DataFrame) -> pd.DataFrame:
     """Infer size/leadership scores from point-in-time market_cap when available.
 
@@ -83,6 +82,7 @@ def infer_profile_scores(day: pd.DataFrame) -> pd.DataFrame:
             leader_ratio.loc[idx] = vals / vals.max()
     out["inferred_leader_score"] = (0.50 * leader_rank + 0.50 * leader_ratio).clip(0, 1)
     return out
+
 
 def load_profiles(path: str) -> pd.DataFrame:
     return validate_profiles(pd.read_csv(path))
@@ -127,8 +127,6 @@ def attach_profiles(day: pd.DataFrame, profiles: pd.DataFrame | None, signal_dat
 
     inferred = infer_profile_scores(out)
 
-    # A point-in-time market-cap field can supply a fallback when no explicit
-    # profile score is present.
     out.loc[out["leader_score"] <= 0, "leader_score"] = inferred["inferred_leader_score"]
     out.loc[out["size_score"] <= 0, "size_score"] = inferred["inferred_size_score"]
 
@@ -175,17 +173,26 @@ def select_diversified_candidates(
     max_industry_positions: int = 2,
     min_distinct_industries: int = 3,
     max_tactical_positions: int = 2,
+    leader_priority_bonus: float = 0.0,
+    priority_weight: float = 0.10,
 ) -> pd.DataFrame:
-    """Select across industries while prioritising leader/large names.
+    """Select across industries, preferring leaders before other core names.
 
     The selection is deterministic. It first tries to cover distinct industries,
-    then fills remaining slots from the strongest core names, and only then
-    admits a limited tactical sleeve for small/micro caps.
+    then fills remaining slots from strong core names, and only then admits the
+    limited tactical sleeve.
     """
     if ranked is None or ranked.empty or target_positions <= 0:
         return ranked.iloc[0:0].copy() if ranked is not None else pd.DataFrame()
 
-    out = enrich_ranked_candidates(ranked)
+    out = enrich_ranked_candidates(ranked, priority_weight=priority_weight)
+    if leader_priority_bonus > 0:
+        out["selection_score"] += out["tier"].eq("leader").astype(float) * leader_priority_bonus
+        out = out.sort_values(
+            ["selection_score", "composite_score", "technical_score"],
+            ascending=False,
+        ).reset_index(drop=True)
+
     chosen: list[dict] = []
     industry_counts: dict[str, int] = {}
     tactical_count = 0
@@ -204,7 +211,7 @@ def select_diversified_candidates(
     core = out[~out["tier"].isin(TACTICAL_TIERS)]
     tactical = out[out["tier"].isin(TACTICAL_TIERS)]
 
-    # First cover different industries with the best eligible core candidate.
+    # Distinct industries are covered by the strongest eligible core candidates.
     for _, row in core.iterrows():
         if len(chosen) >= min(target_positions, min_distinct_industries):
             break
@@ -212,7 +219,7 @@ def select_diversified_candidates(
             chosen.append(row.to_dict())
             industry_counts[str(row["industry"])] = industry_counts.get(str(row["industry"]), 0) + 1
 
-    # Fill remaining slots with core names.
+    # Remaining capacity is filled by core before any tactical candidate.
     for _, row in core.iterrows():
         if len(chosen) >= target_positions:
             break
