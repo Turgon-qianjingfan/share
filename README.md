@@ -57,3 +57,19 @@ date,symbol,open,high,low,close,volume
 ## 后续迭代
 
 下一阶段再加入：基本面因子、市场状态识别、组合级行业约束、滚动 walk-forward、基准指数对照，以及 Longbridge 历史行情的正式适配。
+
+
+## Strategy V2
+
+V2 addresses two observed failure modes:
+
+1. High RSI no longer forces an existing position to exit. RSI is used mainly for new-entry filtering.
+2. Positions are no longer rebalanced every day. A 10-trading-day minimum holding period, 3-ATR trailing stop, 3-day confirmed trend break, and 2.5-percentage-point rebalance threshold reduce churn.
+3. When the account falls below the 200,000-yuan principal, normal new equity exposure is capped at 20% until capital recovers.
+4. The strategy is still capital-preservation oriented; V2 is not a guarantee that principal cannot decline.
+
+Recent single-stock regression tests on the latest available 1,000 daily bars:
+- 603799.SH: final equity about 200,391 yuan; maximum drawdown about -3.88%; about 20 trades.
+- 600988.SH: final equity about 205,626 yuan; maximum drawdown about -3.68%; about 22 trades.
+
+These tests are diagnostic only and do not replace the required five-year, full-universe, walk-forward validation.
