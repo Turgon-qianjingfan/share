@@ -7,26 +7,26 @@ from .backtest import Backtester
 from .strategy import StrategyConfig
 from .metrics import summarize, walk_forward_splits
 
-
 DEFAULT_GRID = {
-    "lookback_fast": [15, 20, 30],
-    "lookback_slow": [60, 90, 120],
+    "lookback_fast": [20, 30],
+    "lookback_slow": [60, 90],
     "entry_rsi_low": [40, 45],
     "entry_rsi_high": [72, 78],
     "min_adx": [15, 20],
-    "trail_atr_multiple": [2.8, 3.2, 3.6],
-    "technical_weight": [0.60, 0.65, 0.70],
-    "event_weight": [0.15, 0.20, 0.25],
-    "industry_weight": [0.10, 0.15, 0.20],
-    "minimum_entry_score": [0.50, 0.55, 0.60],
-    "reentry_cooldown_days": [10, 15, 20],
+    "trail_atr_multiple": [3.0, 3.4],
+    "weight_sets": [
+        (0.65, 0.20, 0.15),
+        (0.55, 0.25, 0.20),
+        (0.70, 0.20, 0.10),
+    ],
+    "minimum_entry_score": [0.50, 0.55],
+    "reentry_cooldown_days": [10, 15],
 }
 
 
 def _objective(metrics: dict, hard_dd: float = 0.08) -> tuple:
     dd = abs(float(metrics.get("max_drawdown", 1.0)))
     breach = max(0.0, dd - hard_dd)
-    # Capital preservation first; return and stability break ties.
     return (
         breach,
         -float(metrics.get("final_equity", 0.0)),
@@ -47,18 +47,21 @@ def grid_train(
     grid = grid or DEFAULT_GRID
     results = []
 
-    weight_sum_ok = lambda tw, ew, iw: abs(tw + ew + iw - 1.0) < 1e-9
-
-    for fast, slow, rsi_low, rsi_high, min_adx, trail, tw, ew, iw, min_score, reentry_days in product(
-        grid["lookback_fast"], grid["lookback_slow"],
-        grid["entry_rsi_low"], grid["entry_rsi_high"],
-        grid["min_adx"], grid["trail_atr_multiple"],
-        grid["technical_weight"], grid["event_weight"], grid["industry_weight"],
-        grid["minimum_entry_score"], grid["reentry_cooldown_days"]
+    for fast, slow, rsi_low, rsi_high, min_adx, trail, weight_set, min_score, reentry_days in product(
+        grid["lookback_fast"],
+        grid["lookback_slow"],
+        grid["entry_rsi_low"],
+        grid["entry_rsi_high"],
+        grid["min_adx"],
+        grid["trail_atr_multiple"],
+        grid["weight_sets"],
+        grid["minimum_entry_score"],
+        grid["reentry_cooldown_days"],
     ):
-        if fast >= slow or rsi_low >= rsi_high or not weight_sum_ok(tw, ew, iw):
+        if fast >= slow or rsi_low >= rsi_high:
             continue
 
+        tw, ew, iw = weight_set
         cfg = StrategyConfig(
             lookback_fast=fast,
             lookback_slow=slow,
@@ -69,7 +72,7 @@ def grid_train(
             technical_weight=tw,
             event_weight=ew,
             industry_weight=iw,
-            minimum_entry_score=float(min_score),
+            minimum_entry_score=min_score,
             reentry_cooldown_days=int(reentry_days),
         )
         equity, trades = Backtester(
@@ -128,9 +131,14 @@ def walk_forward_train(
         train_benchmark = benchmark[benchmark["date"].isin(train_dates)] if benchmark is not None else None
         test_benchmark = benchmark[benchmark["date"].isin(test_dates)] if benchmark is not None else None
 
-        # Events are point-in-time: train may only see events <= its own dates.
-        train_events = events[events["event_time"] <= pd.Timestamp(train_dates[-1], tz="UTC")] if events is not None and not events.empty else events
-        test_events = events[events["event_time"] <= pd.Timestamp(test_dates[-1], tz="UTC")] if events is not None and not events.empty else events
+        train_events = (
+            events[events["event_time"] <= pd.Timestamp(train_dates[-1], tz="UTC")]
+            if events is not None and not events.empty else events
+        )
+        test_events = (
+            events[events["event_time"] <= pd.Timestamp(test_dates[-1], tz="UTC")]
+            if events is not None and not events.empty else events
+        )
 
         ranking = grid_train(
             train,
@@ -152,7 +160,10 @@ def walk_forward_train(
             technical_weight=float(best["technical_weight"]),
             event_weight=float(best["event_weight"]),
             industry_weight=float(best["industry_weight"]),
+            minimum_entry_score=float(best["minimum_entry_score"]),
+            reentry_cooldown_days=int(best["reentry_cooldown_days"]),
         )
+
         oos_equity, oos_trades = Backtester(
             initial_cash=initial_cash,
             strategy_cfg=cfg,
