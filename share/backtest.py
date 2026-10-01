@@ -2,14 +2,21 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .data import load_csv
+from .data import load_csv, limit_to_trading_days
 from .indicators import add_indicators, add_relative_strength
-from .strategy import StrategyConfig, is_entry_eligible, rank_candidates, select_entries, should_exit, target_weights
+from .strategy import (
+    StrategyConfig,
+    is_core_entry_eligible,
+    is_entry_eligible,
+    rank_candidates,
+    select_entries,
+    should_exit,
+    target_weights,
+)
 from .portfolio import Portfolio
 from .execution import ExecutionConfig, Simulator
 from .events import EventConfig, event_score_for_day, validate_events
 from .regime import RegimeConfig, market_regime
-from .data import limit_to_trading_days
 from .universe import attach_profiles, is_tactical_tier
 
 
@@ -160,7 +167,12 @@ class Backtester:
                         )
                 cooldown = self.cooldown_days
 
-            risk_budget = min(regime_weight, 0.25) if drawdown <= -self.warning_drawdown_limit else regime_weight
+            risk_budget = min(
+                regime_weight,
+                self.strategy_cfg.max_equity_weight,
+            )
+            if drawdown <= -self.warning_drawdown_limit:
+                risk_budget = min(risk_budget, 0.25)
             if equity < self.initial_cash:
                 risk_budget = min(risk_budget, self.principal_guard_weight)
             if cooldown > 0 or stable_regime == "crisis":
@@ -188,6 +200,16 @@ class Backtester:
                 signal_date=pd.Timestamp(date),
             )
             entries_df = select_entries(ranked, self.strategy_cfg)
+            if not entries_df.empty:
+                # Regime discipline:
+                # - defensive/crisis: do not open new positions;
+                # - neutral: core only;
+                # - risk_on: core + the highly selective tactical sleeve.
+                if stable_regime in {"defensive", "crisis"}:
+                    entries_df = entries_df.iloc[0:0].copy()
+                elif stable_regime != "risk_on":
+                    entries_df = entries_df[~entries_df["tier"].map(is_tactical_tier)].copy()
+
             entries = entries_df["symbol"].tolist() if not entries_df.empty else []
             if not entries_df.empty:
                 for _, selected in entries_df.iterrows():
@@ -216,8 +238,16 @@ class Backtester:
                     company_score=e.get("company_score", 0.0),
                     severe_negative_event=e.get("severe_negative", False),
                     cfg=self.strategy_cfg,
-                    min_holding_days=(self.strategy_cfg.tactical_min_holding_days if is_tactical_tier(tier) else self.strategy_cfg.min_holding_days),
-                    trail_atr_multiple=(self.strategy_cfg.tactical_trail_atr_multiple if is_tactical_tier(tier) else self.strategy_cfg.trail_atr_multiple),
+                    min_holding_days=(
+                        self.strategy_cfg.tactical_min_holding_days
+                        if is_tactical_tier(tier)
+                        else self.strategy_cfg.min_holding_days
+                    ),
+                    trail_atr_multiple=(
+                        self.strategy_cfg.tactical_trail_atr_multiple
+                        if is_tactical_tier(tier)
+                        else self.strategy_cfg.trail_atr_multiple
+                    ),
                 )
                 if exit_now or cooldown > 0:
                     if sim.sell(
@@ -267,7 +297,6 @@ class Backtester:
                 max_tactical_weight=self.strategy_cfg.max_tactical_weight,
             )
             for symbol, target_weight in targets.items():
-                # No daily top-up. Only open a genuinely new position.
                 if symbol in portfolio.positions or symbol in sold_today:
                     continue
                 signal_date = pd.Timestamp(dates[i + 1])
@@ -281,7 +310,14 @@ class Backtester:
                 px = next_prices.get(symbol)
                 if row_df.empty or px is None or px <= 0:
                     continue
-                if not is_entry_eligible(row_df.iloc[0], self.strategy_cfg):
+
+                row = row_df.iloc[0]
+                tier = tier_by_symbol.get(symbol, "unknown")
+                if is_tactical_tier(tier):
+                    entry_ok = stable_regime == "risk_on" and is_entry_eligible(row, self.strategy_cfg)
+                else:
+                    entry_ok = stable_regime in {"risk_on", "neutral"} and is_core_entry_eligible(row, self.strategy_cfg)
+                if not entry_ok:
                     continue
 
                 desired_value = equity_open * target_weight
