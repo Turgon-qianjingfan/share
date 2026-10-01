@@ -6,9 +6,9 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class RegimeConfig:
-    risk_on_weight: float = 0.40
-    neutral_weight: float = 0.30
-    defensive_weight: float = 0.15
+    risk_on_weight: float = 0.50
+    neutral_weight: float = 0.35
+    defensive_weight: float = 0.20
     crisis_weight: float = 0.00
 
 
