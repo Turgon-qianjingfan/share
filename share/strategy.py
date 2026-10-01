@@ -16,9 +16,10 @@ from .universe import (
 
 @dataclass(frozen=True)
 class StrategyConfig:
+    # Portfolio construction: conservative core book, small tactical sleeve.
     max_single_weight: float = 0.10
-    max_tactical_weight: float = 0.05
-    max_equity_weight: float = 0.50
+    max_tactical_weight: float = 0.04
+    max_equity_weight: float = 0.40
     target_positions: int = 5
     min_history: int = 120
     lookback_trading_days: int = 1000
@@ -28,35 +29,40 @@ class StrategyConfig:
     atr_window: int = 20
     rsi_window: int = 14
 
-    entry_rsi_low: float = 45
-    entry_rsi_high: float = 85
-    max_entry_annualized_vol: float = 0.75
-    min_20d_return: float = -0.03
-    min_adx: float = 14
+    # Core entries are deliberately strict. The tactical breakout path below is
+    # the only place where the strategy is allowed to chase strength.
+    entry_rsi_low: float = 50
+    entry_rsi_high: float = 80
+    max_entry_annualized_vol: float = 0.60
+    min_20d_return: float = 0.00
+    min_adx: float = 16
+    min_relative_strength: float = 0.00
 
-    min_holding_days: int = 8
+    min_holding_days: int = 10
     trend_break_confirm_days: int = 3
-    trail_atr_multiple: float = 3.3
+    trail_atr_multiple: float = 3.0
     hold_ma_buffer: float = 0.985
 
-    tactical_minimum_entry_score: float = 0.50
-    tactical_min_5d_return: float = 0.025
-    tactical_min_volume_ratio: float = 1.15
-    tactical_min_relative_strength: float = 0.0
+    # Independent tactical sleeve: very selective, one position at a time by default.
+    tactical_minimum_entry_score: float = 0.74
+    tactical_min_5d_return: float = 0.04
+    tactical_min_volume_ratio: float = 1.40
+    tactical_min_relative_strength: float = 0.02
     tactical_min_holding_days: int = 3
-    tactical_trail_atr_multiple: float = 2.7
-    max_tactical_positions: int = 2
-    tactical_allocation_ratio: float = 0.20
+    tactical_trail_atr_multiple: float = 2.5
+    max_tactical_positions: int = 1
+    tactical_allocation_ratio: float = 0.10
 
     max_industry_positions: int = 2
     min_distinct_industries: int = 3
-    profile_priority_weight: float = 0.10
+    profile_priority_weight: float = 0.20
+    leader_priority_bonus: float = 0.05
 
     rebalance_threshold: float = 0.025
     technical_weight: float = 0.65
     event_weight: float = 0.20
     industry_weight: float = 0.15
-    minimum_entry_score: float = 0.55
+    minimum_entry_score: float = 0.60
     reentry_cooldown_days: int = 10
     severe_event_reentry_days: int = 60
 
@@ -80,15 +86,16 @@ def technical_score(row: pd.Series) -> float:
     return max(0.0, score - risk_penalty)
 
 
-def is_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
+def _required_indicators_present(row: pd.Series) -> bool:
     required = [
         "ma_fast", "ma_slow", "atr", "rsi", "ret_5", "ret_20", "ret_60",
         "vol_20", "adx", "volume_ratio", "relative_strength_20", "breakout_20",
     ]
-    if any(pd.isna(row.get(k)) for k in required):
-        return False
+    return not any(pd.isna(row.get(k)) for k in required)
 
-    trend_entry = bool(
+
+def _trend_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
+    return bool(
         row["close"] > row["ma_slow"]
         and row["ma_fast"] > row["ma_slow"]
         and row["rsi"] >= cfg.entry_rsi_low
@@ -97,13 +104,12 @@ def is_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
         and row["vol_20"] > 0
         and row["vol_20"] <= cfg.max_entry_annualized_vol
         and row["adx"] >= cfg.min_adx
-        and row["relative_strength_20"] > -0.05
+        and row["relative_strength_20"] >= cfg.min_relative_strength
     )
 
-    # Momentum-chase path: allow an earlier entry when a stock breaks a recent
-    # high with rising volume and clear relative strength. This is intentionally
-    # stricter on breakout quality than the normal trend path.
-    breakout_entry = bool(
+
+def _breakout_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
+    return bool(
         row["close"] > row["ma_fast"]
         and bool(row["breakout_20"])
         and row["ret_5"] >= 0.02
@@ -116,20 +122,34 @@ def is_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
         and row["adx"] >= 12
     )
 
-    return trend_entry or breakout_entry
+
+def is_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
+    """Backward-compatible union of the core trend and tactical breakout paths."""
+    if not _required_indicators_present(row):
+        return False
+    return _trend_entry_eligible(row, cfg) or _breakout_entry_eligible(row, cfg)
+
+
+def is_core_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
+    """Core positions only use the confirmed trend path; no routine chasing."""
+    if not _required_indicators_present(row):
+        return False
+    return _trend_entry_eligible(row, cfg)
 
 
 def is_tactical_entry_eligible(row: pd.Series, cfg: StrategyConfig) -> bool:
-    """Small/micro caps are treated as a short-horizon momentum sleeve."""
-    if not is_entry_eligible(row, cfg):
+    """Tactical positions are reserved for unusually strong breakouts."""
+    if not _required_indicators_present(row):
         return False
     return bool(
-        (
+        _breakout_entry_eligible(row, cfg)
+        and (
             bool(row["breakout_20"])
             or float(row["ret_5"]) >= cfg.tactical_min_5d_return
         )
         and float(row["volume_ratio"]) >= cfg.tactical_min_volume_ratio
         and float(row["relative_strength_20"]) >= cfg.tactical_min_relative_strength
+        and float(row["ret_5"]) >= cfg.tactical_min_5d_return
     )
 
 
@@ -184,15 +204,16 @@ def rank_candidates(
         signal_date if signal_date is not None else pd.Timestamp(day["date"].iloc[0]) if "date" in day.columns and not day.empty else pd.Timestamp.now(),
     )
     for _, row in enriched_day.iterrows():
-        symbol = row["symbol"]
-        if not is_entry_eligible(row, cfg):
+        tier = str(row.get("tier", "unknown")).lower()
+        tactical = is_tactical_tier(tier)
+
+        if tactical:
+            if not is_tactical_entry_eligible(row, cfg):
+                continue
+        elif not is_core_entry_eligible(row, cfg):
             continue
 
-        tactical = is_tactical_tier(row.get("tier", "unknown"))
-        if tactical and not is_tactical_entry_eligible(row, cfg):
-            continue
-
-        e = event_scores.get(symbol, {})
+        e = event_scores.get(row["symbol"], {})
         ts = technical_score(row)
         cs = max(min(float(e.get("company_score", 0.0)), 1.0), -1.0)
         ins = max(min(float(e.get("industry_score", 0.0)), 1.0), -1.0)
@@ -206,9 +227,9 @@ def rank_candidates(
             continue
 
         rows.append({
-            "symbol": symbol,
+            "symbol": row["symbol"],
             "industry": row.get("industry", ""),
-            "tier": row.get("tier", "unknown"),
+            "tier": tier,
             "leader_score": row.get("leader_score", 0.0),
             "size_score": row.get("size_score", 0.0),
             "technical_score": ts,
@@ -226,10 +247,15 @@ def rank_candidates(
             "composite_score", "profile_priority", "selection_score",
         ])
 
-    return enrich_ranked_candidates(
+    out = enrich_ranked_candidates(
         pd.DataFrame(rows),
         priority_weight=cfg.profile_priority_weight,
     )
+    out["selection_score"] += out["tier"].eq("leader").astype(float) * cfg.leader_priority_bonus
+    return out.sort_values(
+        ["selection_score", "composite_score", "technical_score"],
+        ascending=False,
+    ).reset_index(drop=True)
 
 
 def select_entries(ranked: pd.DataFrame, cfg: StrategyConfig) -> pd.DataFrame:
@@ -239,6 +265,8 @@ def select_entries(ranked: pd.DataFrame, cfg: StrategyConfig) -> pd.DataFrame:
         max_industry_positions=cfg.max_industry_positions,
         min_distinct_industries=cfg.min_distinct_industries,
         max_tactical_positions=cfg.max_tactical_positions,
+        leader_priority_bonus=cfg.leader_priority_bonus,
+        priority_weight=cfg.profile_priority_weight,
     )
 
 
@@ -248,7 +276,7 @@ def target_weights(
     max_single_weight: float,
     *,
     stock_tiers: dict[str, str] | None = None,
-    tactical_allocation_ratio: float = 0.20,
+    tactical_allocation_ratio: float = 0.10,
     max_tactical_weight: float = 0.04,
 ) -> dict[str, float]:
     if not candidates or equity_weight <= 0:
@@ -265,7 +293,6 @@ def target_weights(
         tactical_budget = 0.0
         core_budget = equity_weight
     else:
-        # With no core names available, keep the entire book small-cap constrained.
         tactical_budget = min(equity_weight, len(tactical) * max_tactical_weight)
         core_budget = 0.0
 
