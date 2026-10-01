@@ -31,7 +31,7 @@ class Backtester:
         regime_cfg: RegimeConfig | None = None,
         event_cfg: EventConfig | None = None,
         warning_drawdown_limit: float = 0.07,
-        hard_drawdown_limit: float = 0.08,
+        hard_drawdown_limit: float = 0.10,
         principal_guard_weight: float = 0.30,
         cooldown_days: int = 10,
     ):
@@ -174,7 +174,7 @@ class Backtester:
                 self.strategy_cfg.max_equity_weight,
             )
             if drawdown <= -self.warning_drawdown_limit:
-                risk_budget = min(risk_budget, 0.25)
+                risk_budget = min(risk_budget, 0.35)
             if equity < self.initial_cash:
                 risk_budget = min(risk_budget, self.principal_guard_weight)
             if cooldown > 0 or stable_regime == "crisis":
@@ -351,10 +351,21 @@ class Backtester:
 
                 row = row_df.iloc[0]
                 tier = tier_by_symbol.get(symbol, "unknown")
+                e = event_scores.get(symbol, {})
                 if is_tactical_tier(tier):
-                    entry_ok = stable_regime == "risk_on" and is_tactical_entry_eligible(row, self.strategy_cfg)
+                    entry_ok = (
+                        stable_regime == "risk_on"
+                        and is_tactical_entry_eligible(
+                            row,
+                            self.strategy_cfg,
+                            company_score=float(e.get("company_score", 0.0)),
+                            industry_score=float(e.get("industry_score", 0.0)),
+                        )
+                    )
                 else:
-                    entry_ok = stable_regime in {"risk_on", "neutral"} and is_core_entry_eligible(row, self.strategy_cfg)
+                    entry_ok = stable_regime in {"risk_on", "neutral"} and is_core_entry_eligible(
+                        row, self.strategy_cfg
+                    )
                 if not entry_ok:
                     continue
 
