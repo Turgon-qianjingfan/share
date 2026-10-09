@@ -72,7 +72,7 @@ Recent single-stock regression tests on the latest available 1,000 daily bars:
 - 603799.SH: final equity about 200,391 yuan; maximum drawdown about -3.88%; about 20 trades.
 - 600988.SH: final equity about 205,626 yuan; maximum drawdown about -3.68%; about 22 trades.
 
-These tests are diagnostic only and do not replace the required five-year, full-universe, walk-forward validation.
+These figures are legacy notes, not reproduced by the current CI workflow. Until their exact input files, date range, and run command are available and independently rerun, treat them as unverified historical claims—not as evidence of model performance. They do not replace five-year, full-universe, walk-forward validation.
 
 
 ## Iteration log — V1 foundation fixes (2026-10-09)
