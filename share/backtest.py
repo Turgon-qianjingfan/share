@@ -9,6 +9,23 @@ from .portfolio import Portfolio
 from .execution import ExecutionConfig, Simulator
 
 
+def risk_controls(
+    drawdown: float,
+    cooldown_active: bool,
+    warning_drawdown_limit: float = 0.05,
+    hard_drawdown_limit: float = 0.08,
+) -> tuple[bool, bool]:
+    """Return (block_new_entries, force_liquidation).
+
+    A warning drawdown blocks new risk but lets existing positions follow their
+    normal exit rules. Only the hard threshold (or an active cooldown) forces
+    liquidation, keeping the two risk levels meaningfully distinct.
+    """
+    block_new_entries = cooldown_active or drawdown <= -warning_drawdown_limit
+    force_liquidation = cooldown_active or drawdown <= -hard_drawdown_limit
+    return block_new_entries, force_liquidation
+
+
 class Backtester:
     def __init__(
         self,
@@ -55,13 +72,15 @@ class Backtester:
             peak_equity = max(peak_equity, equity)
             drawdown = equity / peak_equity - 1
 
-            if cooldown > 0:
+            cooldown_active = cooldown > 0
+            if cooldown_active:
                 cooldown -= 1
 
             next_prices = dict(zip(next_day["symbol"], next_day["open"]))
 
             # Global capital-preservation circuit breaker.
-            if drawdown <= -self.hard_drawdown_limit:
+            hard_drawdown_trigger = drawdown <= -self.hard_drawdown_limit
+            if hard_drawdown_trigger:
                 for symbol, pos in list(portfolio.positions.items()):
                     px = next_prices.get(symbol)
                     if px is not None:
@@ -70,8 +89,14 @@ class Backtester:
                             "hard_drawdown_circuit_breaker",
                         )
                 cooldown = self.cooldown_days
+                cooldown_active = True
 
-            risk_off = cooldown > 0 or drawdown <= -self.warning_drawdown_limit
+            risk_off, force_liquidation = risk_controls(
+                drawdown,
+                cooldown_active,
+                warning_drawdown_limit=self.warning_drawdown_limit,
+                hard_drawdown_limit=self.hard_drawdown_limit,
+            )
 
             # When the account is below principal, cut normal equity exposure
             # in half. This is a capital-recovery guard, not a guarantee.
@@ -107,12 +132,12 @@ class Backtester:
                 if px is None:
                     continue
 
-                # Risk-off exits immediately. Otherwise use trailing stop or
-                # confirmed trend break. RSI > entry ceiling is no longer an exit.
-                if risk_off:
+                # A warning drawdown blocks new entries but lets holdings follow
+                # their normal stop/trend rules. Hard drawdown/cooldown forces exit.
+                if force_liquidation:
                     sim.sell(
                         dates[i + 1], symbol, px, pos.quantity,
-                        "portfolio_risk_off",
+                        "hard_drawdown_or_cooldown",
                     )
                     continue
 
