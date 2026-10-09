@@ -17,7 +17,7 @@ def demo_data():
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--csv")
-    p.add_argument("--initial-cash", type=float, default=1_000_000)
+    p.add_argument("--initial-cash", type=float, default=200_000)
     p.add_argument("--demo", action="store_true")
     args = p.parse_args()
     data = demo_data() if args.demo else None
