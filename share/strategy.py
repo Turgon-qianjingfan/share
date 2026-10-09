@@ -11,6 +11,11 @@ class StrategyConfig:
     target_positions: int = 5
     min_history: int = 80
 
+    # Indicator lookbacks (kept explicit because Backtester passes these through).
+    lookback_fast: int = 20
+    lookback_slow: int = 60
+    atr_window: int = 20
+
     # Entry filters
     entry_rsi_low: float = 45
     entry_rsi_high: float = 72
