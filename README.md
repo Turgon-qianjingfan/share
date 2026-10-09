@@ -94,6 +94,12 @@ Changes on branch `model-improvement-v1`:
 - Added unit tests for warning, hard-stop, and cooldown states. The synthetic demo does not cross either threshold, so its output is expected to remain unchanged.
 - A drawdown threshold is not a guaranteed loss cap: gaps, limit moves, suspension, missing prices, and liquidity may prevent execution at the assumed next open.
 
+### Iteration V3 — protective stop takes priority
+
+- A code review found that the 10-trading-day minimum holding rule returned before checking the 3-ATR trailing stop. That could suppress a protective exit during an early sharp loss.
+- The ATR protective stop now runs first; the minimum holding period only delays the ordinary trend-confirmation exit.
+- Regression tests now assert both behaviors: ATR stops can exit before day 10, while a trend-only exit is delayed until the minimum holding period.
+
 ### Verification result
 
 The first passing GitHub Actions run reported **9 tests passed** and completed the deterministic demo backtest. Demo output: initial capital ¥200,000; final equity ¥201,675.98; return +0.84%; maximum drawdown -0.23%; minimum equity ¥199,565.93 (-0.22% versus initial capital); 6 simulated trades.
