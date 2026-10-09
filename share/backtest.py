@@ -15,15 +15,22 @@ def risk_controls(
     warning_drawdown_limit: float = 0.05,
     hard_drawdown_limit: float = 0.08,
 ) -> tuple[bool, bool]:
-    """Return (block_new_entries, force_liquidation).
-
-    A warning drawdown blocks new risk but lets existing positions follow their
-    normal exit rules. Only the hard threshold (or an active cooldown) forces
-    liquidation, keeping the two risk levels meaningfully distinct.
-    """
+    """Return (block_new_entries, force_liquidation)."""
     block_new_entries = cooldown_active or drawdown <= -warning_drawdown_limit
     force_liquidation = cooldown_active or drawdown <= -hard_drawdown_limit
     return block_new_entries, force_liquidation
+
+
+def _flag(row, name, default=False):
+    if row is None or name not in row.index or pd.isna(row[name]):
+        return default
+    return bool(row[name])
+
+
+def _optional_price(row, name):
+    if row is None or name not in row.index or pd.isna(row[name]):
+        return None
+    return float(row[name])
 
 
 class Backtester:
@@ -60,14 +67,17 @@ class Backtester:
         dates = sorted(data["date"].unique())
         peak_equity = self.initial_cash
         cooldown = 0
+        last_close: dict[str, float] = {}
 
         for i, date in enumerate(dates[:-1]):
             today = data[data["date"] == date]
             next_day = data[data["date"] == dates[i + 1]]
-            prices_close = dict(zip(today["symbol"], today["close"]))
+            today_rows = {r["symbol"]: r for _, r in today.iterrows()}
+            next_rows = {r["symbol"]: r for _, r in next_day.iterrows()}
+            prices_close = dict(last_close)
+            prices_close.update(dict(zip(today["symbol"], today["close"])))
 
             portfolio.mark_t1(close_prices=prices_close)
-
             equity = portfolio.equity(prices_close)
             peak_equity = max(peak_equity, equity)
             drawdown = equity / peak_equity - 1
@@ -76,30 +86,33 @@ class Backtester:
             if cooldown_active:
                 cooldown -= 1
 
-            next_prices = dict(zip(next_day["symbol"], next_day["open"]))
+            next_open_prices = dict(zip(next_day["symbol"], next_day["open"]))
+            # Missing bars do not imply a zero-value asset: carry the last known
+            # close for valuation, but never use that carried value to execute.
+            next_prices = dict(prices_close)
+            next_prices.update(next_open_prices)
 
-            # Global capital-preservation circuit breaker.
             hard_drawdown_trigger = drawdown <= -self.hard_drawdown_limit
             if hard_drawdown_trigger:
                 for symbol, pos in list(portfolio.positions.items()):
-                    px = next_prices.get(symbol)
+                    bar = next_rows.get(symbol)
+                    px = next_open_prices.get(symbol)
                     if px is not None:
                         sim.sell(
                             dates[i + 1], symbol, px, pos.quantity,
                             "hard_drawdown_circuit_breaker",
+                            suspended=_flag(bar, "is_suspended"),
+                            limit_down=_optional_price(bar, "limit_down"),
                         )
                 cooldown = self.cooldown_days
                 cooldown_active = True
 
             risk_off, force_liquidation = risk_controls(
-                drawdown,
-                cooldown_active,
+                drawdown, cooldown_active,
                 warning_drawdown_limit=self.warning_drawdown_limit,
                 hard_drawdown_limit=self.hard_drawdown_limit,
             )
 
-            # When the account is below principal, cut normal equity exposure
-            # in half. This is a capital-recovery guard, not a guarantee.
             if equity < self.initial_cash and not risk_off:
                 allowed_equity_weight = min(self.max_equity_weight, self.principal_guard_weight)
             else:
@@ -107,17 +120,14 @@ class Backtester:
 
             entries = [] if risk_off else entry_candidates(today, self.strategy_cfg)
             target_map = target_weights(
-                entries,
-                allowed_equity_weight,
-                self.strategy_cfg.max_single_weight,
+                entries, allowed_equity_weight, self.strategy_cfg.max_single_weight,
             )
 
-            # Update holding-state indicators and process exits.
             for symbol, pos in list(portfolio.positions.items()):
-                row = today[today["symbol"] == symbol]
-                if row.empty:
+                current = today_rows.get(symbol)
+                if current is None:
+                    # Missing bar/suspension: keep the position and its last mark.
                     continue
-                current = row.iloc[0]
                 if (
                     current["close"] < current["ma_slow"] * self.strategy_cfg.hold_ma_buffer
                     and current["ma_fast"] < current["ma_slow"]
@@ -125,34 +135,34 @@ class Backtester:
                     pos.below_ma60_streak += 1
                 else:
                     pos.below_ma60_streak = 0
-
                 pos.highest_close = max(pos.highest_close, float(current["close"]))
 
-                px = next_prices.get(symbol)
+                bar = next_rows.get(symbol)
+                px = next_open_prices.get(symbol)
                 if px is None:
                     continue
-
-                # A warning drawdown blocks new entries but lets holdings follow
-                # their normal stop/trend rules. Hard drawdown/cooldown forces exit.
                 if force_liquidation:
                     sim.sell(
                         dates[i + 1], symbol, px, pos.quantity,
                         "hard_drawdown_or_cooldown",
+                        suspended=_flag(bar, "is_suspended"),
+                        limit_down=_optional_price(bar, "limit_down"),
                     )
                     continue
 
                 exit_now, reason = should_exit(
-                    current,
-                    highest_close=pos.highest_close,
+                    current, highest_close=pos.highest_close,
                     days_held=pos.days_held,
                     below_ma60_streak=pos.below_ma60_streak,
                     cfg=self.strategy_cfg,
                 )
                 if exit_now:
-                    sim.sell(dates[i + 1], symbol, px, pos.quantity, reason)
+                    sim.sell(
+                        dates[i + 1], symbol, px, pos.quantity, reason,
+                        suspended=_flag(bar, "is_suspended"),
+                        limit_down=_optional_price(bar, "limit_down"),
+                    )
 
-            # Only add NEW / materially underweight positions. Do not rebalance
-            # every day; this is the main turnover control.
             equity_open = portfolio.cash + sum(
                 p.quantity * next_prices.get(s, 0.0)
                 for s, p in portfolio.positions.items()
@@ -165,32 +175,36 @@ class Backtester:
                 if symbol in portfolio.positions:
                     current_weight = (
                         portfolio.positions[symbol].quantity
-                        * next_prices.get(symbol, 0.0)
-                        / max(equity_open, 1.0)
+                        * next_prices.get(symbol, 0.0) / max(equity_open, 1.0)
                     )
                     if target_weight - current_weight < self.strategy_cfg.rebalance_threshold:
                         continue
-                px = next_prices.get(symbol)
+                px = next_open_prices.get(symbol)
                 if px is None or px <= 0:
+                    continue
+                bar = next_rows.get(symbol)
+                if _flag(bar, "is_suspended") or (
+                    _optional_price(bar, "limit_up") is not None
+                    and px >= _optional_price(bar, "limit_up") - max(px * 1e-8, 1e-8)
+                ):
                     continue
 
                 remaining_capacity = max(0.0, allowed_equity_weight - current_total_weight)
                 desired_weight = min(target_weight, remaining_capacity)
                 if desired_weight <= 0:
                     continue
-
                 desired_value = equity_open * desired_weight
-                current_value = portfolio.positions.get(symbol, None)
-                current_value = (
-                    0.0 if current_value is None
-                    else current_value.quantity * px
-                )
+                position = portfolio.positions.get(symbol)
+                current_value = 0.0 if position is None else position.quantity * px
                 amount = max(0.0, desired_value - current_value)
                 bought = int(amount / px)
                 if bought > 0:
-                    before_qty = portfolio.positions.get(symbol).quantity if symbol in portfolio.positions else 0
-                    if sim.buy(dates[i + 1], symbol, px, bought, "confirmed_entry"):
-                        after_qty = portfolio.positions[symbol].quantity
+                    before_qty = 0 if position is None else position.quantity
+                    if sim.buy(
+                        dates[i + 1], symbol, px, bought, "confirmed_entry",
+                        suspended=_flag(bar, "is_suspended"),
+                        limit_up=_optional_price(bar, "limit_up"),
+                    ):
                         if before_qty == 0:
                             portfolio.positions[symbol].entry_date = str(dates[i + 1])
                             portfolio.positions[symbol].highest_close = px
@@ -198,8 +212,9 @@ class Backtester:
                             portfolio.market_value(next_prices) / max(equity_open, 1.0)
                         )
 
-            prices = dict(zip(next_day["symbol"], next_day["close"]))
-            end_equity = portfolio.equity(prices)
+            end_prices = dict(prices_close)
+            end_prices.update(dict(zip(next_day["symbol"], next_day["close"])))
+            end_equity = portfolio.equity(end_prices)
             peak_equity = max(peak_equity, end_equity)
             rows.append({
                 "date": dates[i + 1],
@@ -209,6 +224,7 @@ class Backtester:
                 "drawdown": end_equity / peak_equity - 1,
                 "risk_off": risk_off,
             })
+            last_close = end_prices
 
         return pd.DataFrame(rows), pd.DataFrame(sim.trades)
 
