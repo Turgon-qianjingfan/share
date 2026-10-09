@@ -25,16 +25,28 @@ def test_backtest_runs_with_200k():
     assert not equity.empty
     assert equity["equity"].iloc[-1] > 0
 
-def test_trailing_stop_does_not_exit_before_min_holding():
+def test_atr_protective_stop_overrides_minimum_holding_period():
     cfg=StrategyConfig(min_holding_days=10, trail_atr_multiple=3.0)
     row=pd.Series({"close":95.0,"ma_fast":110.0,"ma_slow":100.0,"atr":1.0})
-    exited, _ = should_exit(row, highest_close=110.0, days_held=5, below_ma60_streak=5, cfg=cfg)
+    exited, reason = should_exit(
+        row, highest_close=110.0, days_held=5, below_ma60_streak=5, cfg=cfg
+    )
+    assert exited is True
+    assert reason == "atr_trailing_stop"
+
+
+def test_minimum_holding_period_only_delays_trend_exit():
+    cfg=StrategyConfig(min_holding_days=10, trend_break_confirm_days=3)
+    row=pd.Series({"close":97.0,"ma_fast":98.0,"ma_slow":100.0,"atr":1.0})
+    exited, _ = should_exit(
+        row, highest_close=99.0, days_held=5, below_ma60_streak=3, cfg=cfg
+    )
     assert exited is False
 
 def test_confirmed_break_can_exit_after_minimum_holding():
     cfg=StrategyConfig(min_holding_days=10, trend_break_confirm_days=3)
     row=pd.Series({"close":97.0,"ma_fast":98.0,"ma_slow":100.0,"atr":1.0})
-    exited, reason=should_exit(row, highest_close=110.0, days_held=12, below_ma60_streak=3, cfg=cfg)
+    exited, reason=should_exit(row, highest_close=99.0, days_held=12, below_ma60_streak=3, cfg=cfg)
     assert exited is True
     assert reason == "confirmed_trend_break"
 

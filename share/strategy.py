@@ -11,6 +11,11 @@ class StrategyConfig:
     target_positions: int = 5
     min_history: int = 80
 
+    # Indicator lookbacks (kept explicit because Backtester passes these through).
+    lookback_fast: int = 20
+    lookback_slow: int = 60
+    atr_window: int = 20
+
     # Entry filters
     entry_rsi_low: float = 45
     entry_rsi_high: float = 72
@@ -63,12 +68,14 @@ def should_exit(
     cfg: StrategyConfig,
 ) -> tuple[bool, str]:
     """Exit only on a real risk event, not because RSI is temporarily high."""
-    if days_held < cfg.min_holding_days:
-        return False, ""
-
+    # Protective stops must never be disabled by the minimum holding period.
+    # The minimum period only suppresses ordinary trend-based exits.
     atr_stop = highest_close - cfg.trail_atr_multiple * row["atr"]
     if row["close"] < atr_stop:
         return True, "atr_trailing_stop"
+
+    if days_held < cfg.min_holding_days:
+        return False, ""
 
     trend_break = (
         row["close"] < row["ma_slow"] * cfg.hold_ma_buffer
