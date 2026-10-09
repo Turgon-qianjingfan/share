@@ -86,6 +86,14 @@ Changes on branch `model-improvement-v1`:
 - The command-line default initial capital is aligned to 200,000 yuan.
 - GitHub Actions installs the package, runs tests, and executes the demo backtest.
 
+### Iteration V2 — staged drawdown controls
+
+- At the warning threshold (-5%), block new entries but let existing holdings follow their normal stop/trend exit rules.
+- At the hard threshold (-8%), or while a cooldown is active, force liquidation when an executable next-open price is available.
+- This separates the warning and hard-stop layers; the earlier logic unintentionally forced liquidation at both thresholds.
+- Added unit tests for warning, hard-stop, and cooldown states. The synthetic demo does not cross either threshold, so its output is expected to remain unchanged.
+- A drawdown threshold is not a guaranteed loss cap: gaps, limit moves, suspension, missing prices, and liquidity may prevent execution at the assumed next open.
+
 ### Verification result
 
 The first passing GitHub Actions run reported **9 tests passed** and completed the deterministic demo backtest. Demo output: initial capital ¥200,000; final equity ¥201,675.98; return +0.84%; maximum drawdown -0.23%; minimum equity ¥199,565.93 (-0.22% versus initial capital); 6 simulated trades.
