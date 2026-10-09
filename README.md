@@ -45,7 +45,7 @@ python run_backtest.py --demo
 真实历史数据运行：
 
 ```bash
-python run_backtest.py --csv data/your_daily.csv --initial-cash 1000000
+python run_backtest.py --csv data/your_daily.csv --initial-cash 200000
 ```
 
 CSV 至少需要：
@@ -73,3 +73,21 @@ Recent single-stock regression tests on the latest available 1,000 daily bars:
 - 600988.SH: final equity about 205,626 yuan; maximum drawdown about -3.68%; about 22 trades.
 
 These tests are diagnostic only and do not replace the required five-year, full-universe, walk-forward validation.
+
+
+## Iteration log — V1 foundation fixes (2026-10-09)
+
+Changes on branch `model-improvement-v1`:
+
+- Maximum drawdown now includes the initial capital as the starting peak, so losses that occur before the equity curve makes a new high are not understated.
+- RSI edge cases are explicit: persistent gains with zero average loss map to RSI 100; a flat price window maps to neutral RSI 50.
+- Strategy indicator lookbacks are declared in `StrategyConfig` and match the parameters passed by the backtester.
+- Package discovery is restricted to `share*`, fixing editable installation in CI.
+- The command-line default initial capital is aligned to 200,000 yuan.
+- GitHub Actions installs the package, runs tests, and executes the demo backtest.
+
+### Verification result
+
+The first passing GitHub Actions run reported **9 tests passed** and completed the deterministic demo backtest. Demo output: initial capital ¥200,000; final equity ¥201,675.98; return +0.84%; maximum drawdown -0.23%; minimum equity ¥199,565.93 (-0.22% versus initial capital); 6 simulated trades.
+
+**Important:** this demo uses synthetic generated prices, not real A-share market history. Its return, drawdown, and Sharpe ratio must not be interpreted as evidence of profitability. The next meaningful validation requires verified historical OHLCV, transaction-rule handling, a benchmark, and walk-forward out-of-sample tests.
